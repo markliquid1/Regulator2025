@@ -1,0 +1,2161 @@
+<!--
+ * AI_SUMMARY: Alternator Regulator Project - This file is the html for the interface, served by the ESP32 to a browser.  This is mostly HTML, only some minimal embedded JS.  Full JS and CSS files are separate.
+ * AI_PURPOSE: Realtime control of GPIO (settings always have echos) and viewing of sensor data and calculated values.  
+ * AI_INPUTS: Payloads from the ESP32.  Server-Sent Events via /events endpoint
+ * AI_OUTPUTS: Values submitted back to ESP32 via HTTP GET/POST requests to various endpoints
+ * AI_DEPENDENCIES: 
+ * AI_RISKS: Variable naming is inconsisent, need to be careful not to assume consistent patterns
+ * AI_OPTIMIZE: 
+ */-->
+
+
+<!DOCTYPE HTML>
+
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>X Engineering Alternator Regulator</title>
+  <link rel="stylesheet" href="styles.css">
+  <meta content="width=device-width, initial-scale=1" name="viewport" />
+  <link href="/uPlot.min.css" rel="stylesheet" />
+  <!-- Link to my separate javascript file -->
+  <script src="script.js"></script>
+  <!-- Link to uPlot javascript file -->
+  <script src="/uPlot.iife.min.js"> </script>
+
+</head>
+
+<body><iframe name="hidden-form" style="display:none"></iframe>
+  <h2>X Engineering Alternator Regulator</h2>
+
+  <div class="permanent-header">
+    <!-- Tier 1: Sensor readings that flow horizontally first, then wrap -->
+    <div class="sensor-readings-tier">
+      <div class="reading-pair">
+        <div class="reading-item">
+          <span class="reading-label">Battery</span>
+          <span class="reading-value"><span id="header-voltage">12.6</span>V</span>
+        </div>
+        <div class="reading-item">
+          <span class="reading-label">Charge</span>
+          <span class="reading-value"><span id="header-soc">85</span>%</span>
+        </div>
+      </div>
+
+      <div class="reading-pair">
+        <div class="reading-item">
+          <span class="reading-label">Alternator Current</span>
+          <span class="reading-value"><span id="header-alt-current">42</span>A</span>
+        </div>
+        <div class="reading-item">
+          <span class="reading-label">Battery Current</span>
+          <span class="reading-value"><span id="header-batt-current">38</span>A</span>
+        </div>
+      </div>
+
+      <div class="reading-pair">
+        <div class="reading-item">
+          <span class="reading-label">Alt Temp</span>
+          <span class="reading-value"><span id="header-alt-temp">165</span>°F</span>
+        </div>
+        <div class="reading-item">
+          <span class="reading-label">Engine</span>
+          <span class="reading-value"><span id="header-rpm">1850</span> RPM</span>
+        </div>
+      </div>
+      <div class="reading-pair">
+        <div class="reading-item">
+          <span class="reading-label">Field</span>
+          <span class="reading-value field-status-inactive" id="field-status">OFF</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tier 2: Settings Access (full width underneath readings) -->
+    <div id="settings-access-section" class="settings-access-tier">
+      <div id="lock-status">Settings are Locked</div>
+      <div class="password-form-wrapper">
+        <form action="/get" method="GET" target="hidden-form" onsubmit="setAdminPassword(); return false;">
+          <input type="hidden" name="dummy" value="1" />
+          <div class="password-form">
+            <div class="password-input-group">
+              <input type="password" id="admin_password" name="admin_password" placeholder="Enter password"
+                autocomplete="current-password" class="password-input" />
+              <input type="submit" id="admin_password_set" value="Unlock" class="btn-primary" />
+              <div class="show-checkbox-container">
+                <input type="checkbox" class="show-checkbox" onclick="togglePassword('admin_password')">
+                <label class="show-label">Show</label>
+              </div>
+            </div>
+          </div>
+          <div id="admin_password_msg"></div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tier 3: Alternator control (always centered and visible) -->
+    <div class="alternator-control-tier">
+      <div class="alternator-control">
+        <span class="control-label">Alternator Enable</span>
+        <form action="/get" method="GET" target="hidden-form">
+          <input type="hidden" name="password" class="password_field">
+          <label class="switch">
+            <input id="header-alternator-enable" type="checkbox"
+              onchange="if(handleAlternatorToggle(this)) { this.form.submit(); submitMessage(); }" />
+            <span class="slider"></span>
+          </label>
+          <input id="OnOff" name="OnOff" type="number" value="" style="display:none;" />
+        </form>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- Main Tab Navigation -->
+  <div class="main-tabs">
+    <button class="main-tab" onclick="showMainTab('livedata')">Live Data</button>
+    <button class="main-tab" onclick="showMainTab('settings')">Settings</button>
+    <button class="main-tab" onclick="showMainTab('plots')">Plots</button>
+    <button class="main-tab" onclick="showMainTab('console')">Console</button>
+  </div>
+
+  <div id="settings" class="tab-content">
+    <!-- Settings Sub-tabs -->
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubTab('settings', 'basic')">Basic</button>
+      <button class="sub-tab" onclick="showSubTab('settings', 'thermistor')">Thermistor</button>
+      <button class="sub-tab" onclick="showSubTab('settings', 'advanced')">Advanced</button>
+      <button class="sub-tab" onclick="showSubTab('settings', 'alarms')">Alarms</button>
+      <button class="sub-tab" onclick="showSubTab('settings', 'battery')">Battery Monitor</button>
+      <button class="sub-tab" onclick="showSubTab('settings', 'system')">System</button>
+    </div>
+
+    <div id="settings-section" class="locked">
+      <div class="settings-grid">
+
+        <!-- Basic Settings Sub-tab -->
+        <div id="settings-basic" class="sub-tab-content active">
+          <div class="settings-card">
+            <div class="section-title">Basic</div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Target Alternator Output (Normal) (A) (<span id="TargetAmps_echo">?</span>):
+              </div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="TargetAmps" type="number" step="1" min="0" max="500" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Target Alternator Output (Low) (A) (<span id="TargetAmpL_echo">?</span>):</div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="TargetAmpL" type="number" step="1" min="0" max="500" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Target Alternator Output (<span id="HiLow_echo">?</span>):</div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <span class="toggle-label">Low</span>
+                  <label class="switch">
+                    <input id="HiLow_checkbox" type="checkbox" onchange="if(handleUserToggle('HiLow_checkbox', 'HiLow', 'HiLow')) { this.form.submit();
+              submitMessage(); }" />
+                    <span class="slider round"></span>
+                  </label>
+                  <span class="toggle-label">Normal</span>
+                  <input id="HiLow" name="HiLow" type="number" value="" style="display:none;" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Force Float Mode (<span id="ForceFloat_echo">?</span>):</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Targets 0 amps in/out of battery</span>
+                </span>
+              </div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <span class="toggle-label">Off</span>
+                  <label class="switch">
+                    <input id="ForceFloat_checkbox" type="checkbox"
+                      onchange="if(handleUserToggle('ForceFloat_checkbox', 'ForceFloat', 'ForceFloat')) { this.form.submit(); submitMessage(); }" />
+                    <span class="slider round"></span>
+                  </label>
+                  <span class="toggle-label">On</span>
+                  <input id="ForceFloat" name="ForceFloat" type="number" value="" style="display:none;" />
+                </form>
+              </div>
+            </div>
+
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Amp Target Source (<span id="AmpSrc_echo">?</span>):</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Controller will use this selection for feedback</span>
+                </span>
+              </div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <select name="AmpSrc">
+                    <option value="0">Alt Hall Effect Sensor</option>
+                    <option value="1">Battery Shunt</option>
+                    <option value="2">NMEA2K Batt</option>
+                    <option value="3">NMEA2K Alt</option>
+                    <option value="4">NMEA0183 Batt</option>
+                    <option value="5">NMEA0183 Alt</option>
+                    <option value="6">Victron Batt</option>
+                    <option value="7">Other</option>
+                  </select>
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Alternator Temp Limit (F) (<span id="TemperatureLimitF_echo">?</span>):</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">30F offset from measured temp to true max temp not uncommon; set this lower
+                    accordingly</span>
+                </span>
+              </div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="TemperatureLimitF" type="number" step="1" min="0" max="350" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Bulk Voltage (<span id="FullChargeVoltage_echo">?</span>):</div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="FullChargeVoltage" type="number" step="0.01" min="1" max="70" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Bulk Completion Time (sec) (<span id="bulkCompleteTime_echo">?</span>):</div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="bulkCompleteTime" type="number" step="1" min="1" max="600" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Float Voltage (<span id="TargetFloatVoltage_echo">?</span>):
+              </div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="TargetFloatVoltage" type="number" step="0.01" min="1" max="70" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+            <hr />
+            <div class="form-row">
+              <div class="form-label">Float Duration (hrs) (<span id="FLOAT_DURATION_echo">?</span>):</div>
+              <div class="form-input">
+                <form action="/get" method="GET" target="hidden-form">
+                  <input type="hidden" name="password" class="password_field">
+                  <input name="FLOAT_DURATION" type="number" step="1" min="1" max="72" />
+                  <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+                </form>
+              </div>
+            </div>
+
+          </div> <!-- CLOSE Basic settings-card ??? -->
+        </div>
+      </div>
+      <!-- Thermistor Settings Sub-tab -->
+      <div id="settings-thermistor" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Thermistor</div>
+
+          <div class="form-row">
+            <div class="form-label">Temp Source (<span id="TempSource_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Digital (default)</span>
+                <label class="switch">
+                  <input id="TempSource_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('TempSource_checkbox', 'TempSource', 'TempSource')) { this.form.submit(); submitMessage(); }">
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Thermistor</span>
+                <input id="TempSource" name="TempSource" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Series Resistor R_fixed Ω (<span id="R_fixed_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="R_fixed" type="number" step="1" min="0" max="1000000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Thermistor Beta (<span id="Beta_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="Beta" type="number" step="1" min="0" max="100000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Reference Temp T0 °C (<span id="T0_C_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="T0_C" type="number" step="0.1" min="0" max="300" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+        </div> <!-- CLOSE Thermistor settings-card -->
+      </div>
+
+      <!-- Advanced Settings Sub-tab -->
+      <div id="settings-advanced" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Advanced</div>
+          <div class="form-row">
+            <div class="form-label">Field Switching Freq (hz) (<span id="SwitchingFrequency_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="SwitchingFrequency" type="number" step="1" min="50" max="1100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Field Adj Step (V) (<span id="interval_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="interval" type="number" step="0.01" min="0.01" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Field Adj. Time Interval (ms) (<span id="FieldAdjustmentInterval_echo">?</span>):
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="FieldAdjustmentInterval" type="number" step="1" min="1" max="10000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+
+          <div class="form-row">
+            <div class="form-label">RPM Scaling Factor (<span id="RPMScalingFactor_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="RPMScalingFactor" type="number" step="1" min="1" max="1000000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Ignore Alt Temp (<span id="IgnoreTemperature_echo">0</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">For emergency use, if temp sensor is bad</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">No</span>
+                <label class="switch">
+                  <input id="IgnoreTemperature_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('IgnoreTemperature_checkbox', 'IgnoreTemperature', 'IgnoreTemperature')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Yes</span>
+                <input id="IgnoreTemperature" name="IgnoreTemperature" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Defer to BMS Control (<span id="BMSLogic_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">No</span>
+                <label class="switch">
+                  <input id="BMSLogic_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('BMSLogic_checkbox', 'BMSLogic', 'BMSLogic')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Yes</span>
+                <input id="BMSLogic" name="BMSLogic" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Charge on ___ BMS Signal (<span id="BMSLogicLevelOff_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Low</span>
+                <label class="switch">
+                  <input id="BMSLogicLevelOff_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('BMSLogicLevelOff_checkbox', 'BMSLogicLevelOff', 'BMSLogicLevelOff')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">High</span>
+                <input id="BMSLogicLevelOff" name="BMSLogicLevelOff" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Min Field (%) (<span id="MinDuty_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Engine Speed may register better if min field is kept >15% or so</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="MinDuty" type="number" step="1" min="0" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Max Field (%) (<span id="MaxDuty_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="MaxDuty" type="number" step="1" min="0" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Field Resistance (Ohms) (<span id="FieldResistance_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Only affects Field Amps calc, not important</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="FieldResistance" type="number" step="0.01" min="0.01" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">RPM-Based Charging Curve (<span id="AmpControlByRPM_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="AmpControlByRPM_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('AmpControlByRPM_checkbox', 'AmpControlByRPM', 'AmpControlByRPM')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="AmpControlByRPM" name="AmpControlByRPM" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-label"></div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <table style="border-collapse: collapse; width: 100%;">
+                  <thead>
+                    <tr>
+                      <th
+                        style="padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: 12px;">
+                        RPM</th>
+                      <th
+                        style="padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: left; font-size: 12px;">
+                        Amps</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM1" type="number" step="1" min="0" id="RPM1_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps1" type="number" step="1" min="0" id="Amps1_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM2" type="number" step="1" min="0" id="RPM2_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps2" type="number" step="1" min="0" id="Amps2_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM3" type="number" step="1" min="0" id="RPM3_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps3" type="number" step="1" min="0" id="Amps3_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM4" type="number" step="1" min="0" id="RPM4_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps4" type="number" step="1" min="0" id="Amps4_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM5" type="number" step="1" min="0" id="RPM5_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps5" type="number" step="1" min="0" id="Amps5_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM6" type="number" step="1" min="0" id="RPM6_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps6" type="number" step="1" min="0" id="Amps6_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 2px;"><input name="RPM7" type="number" step="1" min="0" id="RPM7_input"
+                          style="width: 70px;" /></td>
+                      <td style="padding: 2px;"><input name="Amps7" type="number" step="1" min="0" id="Amps7_input"
+                          style="width: 70px;" /></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style="margin-top: 8px;">
+                  <input onclick="submitMessage()" type="submit" value="Save" />
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Manual Field Enable (<span id="ManualFieldToggle_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="ManualFieldToggle_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('ManualFieldToggle_checkbox', 'ManualFieldToggle', 'ManualFieldToggle')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="ManualFieldToggle" name="ManualFieldToggle" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Manual Field PWM (%) (<span id="ManualDuty_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ManualDuty" type="number" step="1" min="0" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Limp Home Mode (<span id="LimpHome_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Will ignore all sensors and set a field of 50%</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="LimpHome_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('LimpHome_checkbox', 'LimpHome', 'LimpHome')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="LimpHome" name="LimpHome" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>SOC Auto-Correction (<span id="AutoShuntGainCorrection_echo">0</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Automatically corrects battery current readings when full charge is detected.
+                  Only works with Battery Shunt (AmpSrc=1).</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="AutoShuntGainCorrection_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('AutoShuntGainCorrection_checkbox', 'AutoShuntGainCorrection', 'AutoShuntGainCorrection')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="AutoShuntGainCorrection" name="AutoShuntGainCorrection" type="number" value=""
+                  style="display:none;" />
+                <input type="hidden" name="ResetDynamicShuntGain" id="ResetDynamicShuntGain" value="0" />
+                <button type="button" class="btn-secondary" onclick="resetParameter('ResetDynamicShuntGain')"
+                  id="ResetDynamicShuntGain_button">Reset Factor</button>
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">SOC Gain Factor (Current Value):</div>
+            <div class="form-input">
+              <span id="DynamicShuntGainFactor_display"
+                style="font-weight: bold; color: var(--accent); font-size: 14px;">?</span>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Alternator Auto-Zero (<span id="AutoAltCurrentZero_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Automatically zeros alternator current reading every hour and when temperature
+                  changes 20°F.</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="AutoAltCurrentZero_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('AutoAltCurrentZero_checkbox', 'AutoAltCurrentZero', 'AutoAltCurrentZero')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="AutoAltCurrentZero" name="AutoAltCurrentZero" type="number" value="" style="display:none;" />
+                <input type="hidden" name="ResetDynamicAltZero" id="ResetDynamicAltZero" value="0" />
+                <button type="button" class="btn-secondary" onclick="resetParameter('ResetDynamicAltZero')"
+                  id="ResetDynamicAltZero_button">Reset Zero</button>
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Winding Temp Offset (°F) (<span id="WindingTempOffset_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">How much hotter windings are than case temperature. Typical: 40-60°F</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="WindingTempOffset" type="number" step="0.1" min="0" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Pulley Ratio (Alt:Engine) (<span id="PulleyRatio_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Alternator RPM = Engine RPM × this ratio. Common: 2.0-3.0</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="PulleyRatio" type="number" step="0.01" min="1.0" max="10.0" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Current Threshold (A) (<span id="CurrentThreshold_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Below this, the Alternator is assumed OFF. Affects many altenator
+                  calcs.</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="CurrentThreshold" type="number" step="0.01" min="0.01" max="20" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Set Alternator Life Manually (%) (<span id="ManualLifePercentage_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">This will adjust life for brushes, bearings, insulation all together, meant
+                  for zero-ing all together</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field" />
+                <input name="ManualLifePercentage" type="number" step="1" min="0" max="100" />
+                <input onclick="submitMessage.call(this)" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+        </div> <!-- closes .settings-card for Advanced -->
+      </div>
+
+      <!-- Alarms Settings Sub-tab -->
+      <div id="settings-alarms" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Alarm / Emergency</div>
+
+          <div class="form-row">
+            <div class="form-label">Alarm Enable (<span id="AlarmActivate_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="AlarmActivate_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('AlarmActivate_checkbox', 'AlarmActivate', 'AlarmActivate')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Armed</span>
+                <input id="AlarmActivate" name="AlarmActivate" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">High Temp Alarm (F) (<span id="TempAlarm_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="TempAlarm" type="number" step="1" min="0" max="350" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">High Voltage Alarm (<span id="VoltageAlarmHigh_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="VoltageAlarmHigh" type="number" step="0.1" min="0" max="70" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Low Voltage Alarm (<span id="VoltageAlarmLow_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="VoltageAlarmLow" type="number" step="0.1" min="0" max="70" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">High Current Alarm (Alternator) (A) (<span id="CurrentAlarmHigh_echo">0</span>):
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="CurrentAlarmHigh" type="number" step="1" min="0" max="1000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">High Current Alarm (Battery) (A) (<span
+                id="MaximumAllowedBatteryAmps_echo">0</span>):
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="MaximumAllowedBatteryAmps" type="number" step="1" min="0" max="1000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Alarm Latch Mode (<span id="AlarmLatchEnabled_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Momentary</span>
+                <label class="switch">
+                  <input id="AlarmLatchEnabled_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('AlarmLatchEnabled_checkbox', 'AlarmLatchEnabled', 'AlarmLatchEnabled')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Latched</span>
+                <input id="AlarmLatchEnabled" name="AlarmLatchEnabled" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">Alarm Test (<span id="AlarmTest_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form" onsubmit="return handleAlarmTest();">
+                <input type="hidden" name="password" class="password_field">
+                <input type="hidden" name="AlarmTest" value="1">
+                <button type="submit" id="alarm-test-btn"
+                  style="background-color: #555555; color: white; border: none; padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-weight: bold;">
+                  Test Buzzer (2s)
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">Reset Alarm Latch (<span id="ResetAlarmLatch_echo">0</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form" onsubmit="return handleResetLatch();">
+                <input type="hidden" name="password" class="password_field">
+                <input type="hidden" name="ResetAlarmLatch" value="1">
+                <button type="submit" id="reset-latch-btn"
+                  style="background-color: #555555; color: white; border: none; padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-weight: bold;">
+                  Reset Latch
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Alarm Status:</div>
+            <div class="form-input">
+              <div id="alarm-status-indicator" style="display: flex; align-items: center; gap: 10px;">
+                <div id="alarm-led" style="
+                  width: 20px;
+                  height: 20px;
+                  border-radius: 50%;
+                  background-color: #00cc00;
+                  border: 2px solid #333;
+                  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+                  transition: all 0.3s ease;
+                "></div>
+                <span id="alarm-status-text" style="
+                  font-weight: bold;
+                  color: #00cc00;
+                  transition: color 0.3s ease;
+                ">Silent</span>
+              </div>
+            </div>
+          </div>
+
+
+
+        </div>
+      </div>
+      <!-- Battery Monitor Settings Sub-tab -->
+      <div id="settings-battery" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Battery Monitor</div>
+          <div class="form-row">
+            <div class="form-label">Battery Capacity (Amp hr) (<span id="BatteryCapacity_Ah_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="BatteryCapacity_Ah" type="number" step="1" min="1" max="10000" />
+                <input onclick="submitMessage.call(this)" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Max Charge Detection Voltage (<span id="ChargedVoltage_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ChargedVoltage" type="number" step="0.01" min="5" max="70" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Max Charge Detection Tail Current (%) (<span id="TailCurrent_echo">0</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">A percentage of battery capacity (A*hr), ex: 3% for 100A*hr bank = 3 amps
+                </span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="TailCurrent" type="number" step="0.01" min="0.01" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Max Charge Detection Time (s) (<span id="ChargedDetectionTime_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ChargedDetectionTime" type="number" step="1" min="1" max="10000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Peukert Exponent (<span id="PeukertExponent_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="PeukertExponent" type="number" step="0.01" min="0.5" max="2.0" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Charge Efficiency (%) (<span id="ChargeEfficiency_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ChargeEfficiency" type="number" step="1" min="30" max="150" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Shunt Resitance uOhms (micro)(<span id="ShuntResistanceMicroOhm_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Most common (Victron) = 100u</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ShuntResistanceMicroOhm" type="number" step="1" min="1" max="5000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Set SoC (%) Manually (<span id="ManualSOCPoint_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="ManualSOCPoint" type="number" step="1" min="0" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr />
+      <div class="form-row">
+        <div class="form-label">B Current Source (<span id="BatteryCurrentSource_echo">?</span>):</div>
+        <div class="form-input">
+          <form action="/get" method="GET" target="hidden-form">
+            <input type="hidden" name="password" class="password_field">
+            <select name="BatteryCurrentSource">
+              <option value="0">INA228 Shunt</option>
+              <option value="1">NMEA2K Battery</option>
+              <option value="2">NMEA0183 Battery</option>
+              <option value="3">Victron Battery</option>
+            </select>
+            <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+          </form>
+        </div>
+      </div>
+
+      <hr />
+      <div class="form-row">
+        <div class="form-label">Invert B Amps (<span id="InvertBatteryMonitorAmps_echo">?</span>):</div>
+        <div class="form-input">
+          <form action="/get" method="GET" target="hidden-form">
+            <input type="hidden" name="password" class="password_field">
+            <span class="toggle-label">No</span>
+            <label class="switch">
+              <input id="InvertBatteryMonitorAmps_checkbox" type="checkbox"
+                onchange="if(handleUserToggle('InvertBatteryMonitorAmps_checkbox', 'InvertBatteryMonitorAmps', 'InvertBatteryMonitorAmps')) { this.form.submit(); submitMessage(); }" />
+              <span class="slider round"></span>
+            </label>
+            <span class="toggle-label">Yes</span>
+            <input id="InvertBatteryMonitorAmps" name="InvertBatteryMonitorAmps" type="number" value=""
+              style="display:none;" />
+          </form>
+        </div>
+      </div>
+
+      <!-- System Settings Sub-tab -->
+      <div id="settings-system" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">System</div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Dark Mode:</div>
+            <div class="form-input">
+              <span class="toggle-label">Off</span>
+              <label class="switch">
+                <input id="DarkMode_checkbox" type="checkbox"
+                  onchange="document.body.classList.toggle('dark-mode'); localStorage.setItem('darkMode', this.checked ? '1' : '0'); updateUplotTheme(currentTempPlot); updateUplotTheme(voltagePlot); updateUplotTheme(rpmPlot);" />
+                <span class="slider round"></span>
+              </label>
+              <span class="toggle-label">On</span>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">VE.Direct Data (<span id="VeData_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="VeData_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('VeData_checkbox', 'VeData', 'VeData')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="VeData" name="VeData" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">NMEA 0183 Data (<span id="NMEA0183Data_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="NMEA0183Data_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('NMEA0183Data_checkbox', 'NMEA0183Data', 'NMEA0183Data')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="NMEA0183Data" name="NMEA0183Data" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">NMEA2K Data (<span id="NMEA2KData_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="NMEA2KData_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('NMEA2KData_checkbox', 'NMEA2KData', 'NMEA2KData')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="NMEA2KData" name="NMEA2KData" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Battery Voltage Source (<span id="BatteryVoltageSource_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <select name="BatteryVoltageSource">
+                  <option value="0">0 INA228</option>
+                  <option value="1">1 ADS1115</option>
+                  <option value="2">2 VictronVeDirect</option>
+                  <option value="3">3 NMEA0183</option>
+                  <option value="4">4 NMEA2K</option>
+                </select>
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Invert Battery Amps (<span id="InvertBattAmps_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">No</span>
+                <label class="switch">
+                  <input id="InvertBattAmps_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('InvertBattAmps_checkbox', 'InvertBattAmps', 'InvertBattAmps')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Yes</span>
+                <input id="InvertBattAmps" name="InvertBattAmps" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Invert Alternator Amps (<span id="InvertAltAmps_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">No</span>
+                <label class="switch">
+                  <input id="InvertAltAmps_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('InvertAltAmps_checkbox', 'InvertAltAmps', 'InvertAltAmps')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">Yes</span>
+                <input id="InvertAltAmps" name="InvertAltAmps" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Alternator Current Offset (A) (<span id="AlternatorCOffset_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="AlternatorCOffset" type="number" step="0.01" min="-100" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Battery Current Offset (A) (<span id="BatteryCOffset_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="BatteryCOffset" type="number" step="0.01" min="-100" max="100" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Plot Points (X axis length) (<span id="maxPoints_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="maxPoints" type="number" step="1" min="10" max="1000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Update Rate (ms) (<span id="webgaugesinterval_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="webgaugesinterval" type="number" step="100" min="100" max="10000" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Plot Time Window (sec) (<span id="plotTimeWindow_echo">?</span>):</div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <input name="plotTimeWindow" type="number" step="10" min="10" max="600" />
+                <input onclick="submitMessage()" type="submit" value="Set" class="btn-primary" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Switch Panel Override (<span id="SwitchControlOverride_echo">?</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Obsolete, ignore</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="SwitchControlOverride_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('SwitchControlOverride_checkbox', 'SwitchControlOverride', 'SwitchControlOverride')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="SwitchControlOverride" name="SwitchControlOverride" type="number" value=""
+                  style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Ignition Override (<span id="IgnitionOverride_echo">0</span>):</span>
+              <span class="tooltip" onclick="this.classList.toggle('active')">
+                ℹ️
+                <span class="tooltip-box">Danger, this is a good way to accidentally leave the field on</span>
+              </span>
+            </div>
+            <div class="form-input">
+              <form action="/get" method="GET" target="hidden-form">
+                <input type="hidden" name="password" class="password_field">
+                <span class="toggle-label">Off</span>
+                <label class="switch">
+                  <input id="IgnitionOverride_checkbox" type="checkbox"
+                    onchange="if(handleUserToggle('IgnitionOverride_checkbox', 'IgnitionOverride', 'IgnitionOverride')) { this.form.submit(); submitMessage(); }" />
+                  <span class="slider round"></span>
+                </label>
+                <span class="toggle-label">On</span>
+                <input id="IgnitionOverride" name="IgnitionOverride" type="number" value="" style="display:none;" />
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Change Password:</div>
+            <div class="form-input">
+              <form action="/setPassword" method="POST" target="hidden-form" onsubmit="return setNewPassword();">
+                <input type="hidden" name="password" class="password_field" />
+                <div class="password-form">
+                  <div class="password-input-group">
+                    <input type="password" id="newpassword" name="newpassword" placeholder="New password"
+                      class="password-input" />
+                    <input type="submit" id="newpassword_set" value="Change" class="btn-primary" />
+                    <div class="show-checkbox-container">
+                      <input type="checkbox" class="show-checkbox" onclick="togglePassword('newpassword')">
+                      <label class="show-label">Show</label>
+                    </div>
+                  </div>
+                </div>
+                <div id="newpassword_msg" style="font-size: 12px; color: #00a19a; margin-top: 5px;"></div>
+              </form>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Lock Settings:</div>
+            <div class="form-input">
+              <button type="button" onclick="lockSettingsManually()" class="btn-primary">
+                Lock Settings
+              </button>
+            </div>
+          </div>
+
+          <hr />
+          <div class="form-row">
+            <div class="form-label">Factory Reset:</div>
+            <div class="form-input">
+              <button type="button" id="factory-reset-btn" onclick="factoryReset()" class="btn-primary">
+                Restore Defaults
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div id="livedata" class="tab-content">
+    <!-- Live Data Sub-tabs -->
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="showSubTab('livedata', 'battery')">Battery</button>
+      <button class="sub-tab" onclick="showSubTab('livedata', 'alternator')">Alternator</button>
+      <button class="sub-tab" onclick="showSubTab('livedata', 'engine')">Engine</button>
+      <button class="sub-tab" onclick="showSubTab('livedata', 'esp32')">ESP32</button>
+      <button class="sub-tab" onclick="showSubTab('livedata', 'other')">Other</button>
+    </div>
+    <div class="settings-grid">
+
+      <!-- Battery Live Data Sub-tab -->
+      <div id="livedata-battery" class="sub-tab-content active">
+        <div class="settings-card">
+          <div class="section-title">Battery</div>
+          <div class="grid">
+            <div class="card">
+              <p>ADS Battery Voltage</p>
+              <p class="reading"><span id="BatteryVID">0</span> V</p>
+            </div>
+            <div class="card">
+              <p>Victron Battery Voltage</p>
+              <p class="reading"><span id="VictronVoltageID">0</span> V</p>
+            </div>
+            <div class="card">
+              <p>INA Battery Voltage</p>
+              <p class="reading"><span id="IBVID">0</span> V</p>
+            </div>
+
+            <div class="card">
+              <p>Max Ever Battery Voltage</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="IBVMaxID">0</span><span>V</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetVoltage" id="ResetVoltage" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetVoltage')"
+                    id="ResetVoltage_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>State of Charge</p>
+              <p class="reading"><span id="SoC_percentID">0</span> %</p>
+            </div>
+
+            <div class="card">
+              <p>Alternator Output Energy</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="AlternatorChargedEnergyID">0</span><span>Wh</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetAlternatorChargedEnergy" id="ResetAlternatorChargedEnergy"
+                    value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetAlternatorChargedEnergy')"
+                    id="ResetAlternatorChargedEnergy_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Battery Discharged Energy</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="DischargedEnergyID">0</span><span>Wh</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetDischargedEnergy" id="ResetDischargedEnergy" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetDischargedEnergy')"
+                    id="ResetDischargedEnergy_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Battery Current</p>
+              <p class="reading"><span id="BCurrID">0</span> A</p>
+            </div>
+
+            <div class="card">
+              <p>Victron Battery Current</p>
+              <p class="reading"><span id="VictronCurrentID">0</span> A</p>
+            </div>
+
+            <div class="card">
+              <p>Time to Full Charge</p>
+              <p class="reading"><span id="timeToFullChargeMinID">0</span> min</p>
+            </div>
+
+            <div class="card">
+              <p>Time to Full Discharge</p>
+              <p class="reading"><span id="timeToFullDischargeMinID">0</span> min</p>
+            </div>
+
+            <div class="card">
+              <p>SOC Gain Factor (Auto-Learned)</p>
+              <p class="reading"><span id="DynamicShuntGainFactorID">1.000</span></p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Alternator Live Data Sub-tab -->
+      <div id="livedata-alternator" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Alternator</div>
+          <div class="grid">
+            <div class="card">
+              <p>Alternator Current</p>
+              <p class="reading"><span id="MeasAmpsID">0</span> A</p>
+            </div>
+            <div class="card">
+              <p>Alternator Temp</p>
+              <p class="reading"><span id="AltTempID">0</span> °F</p>
+            </div>
+            <div class="card">
+              <p>Command Field Duty Cycle</p>
+              <p class="reading"><span id="DutyCycleID">0</span> %</p>
+            </div>
+            <div class="card">
+              <p>Field Volts (Calc'd)</p>
+              <p class="reading"><span id="FieldVoltsID">0</span> V</p>
+            </div>
+            <div class="card">
+              <p>Field Amps (Calc'd)) </p>
+              <p class="reading"><span id="FieldAmpsID">0</span> A</p>
+            </div>
+            <div class="card">
+              <p>Alternator On Time</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="AlternatorOnTimeID">0</span><span>H:M:S</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetAlternatorOnTime" id="ResetAlternatorOnTime" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetAlternatorOnTime')"
+                    id="ResetAlternatorOnTime_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Fuel Used by Alt</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="AlternatorFuelUsedID">0</span><span>L</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetFuelUsed" id="ResetFuelUsed" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetFuelUsed')"
+                    id="ResetFuelUsed_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Battery Charged Energy</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="ChargedEnergyID">0</span><span>Wh</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetEnergy" id="ResetEnergy" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetEnergy')"
+                    id="ResetEnergy_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Max Alternator Output Current</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="MeasuredAmpsMaxID">0</span><span>A</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetCurrent" id="ResetCurrent" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetCurrent')"
+                    id="ResetCurrent_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Alt Current Zero Offset (Auto-Learned)</p>
+              <p class="reading"><span id="DynamicAltCurrentZeroID">0.000</span> A</p>
+            </div>
+
+            <div class="card">
+              <p>Max Alternator Temp</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="MaxAlternatorTemperatureF_ID">0</span><span>°F</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetTemp" id="ResetTemp" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetTemp')"
+                    id="ResetTemp_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Insulation Life Remaining</p>
+              <p class="reading" id="insulation-life-display">
+                <span id="InsulationLifePercentID">100.0</span>%
+                <span id="insulation-indicator"
+                  style="margin-left: 8px; font-size: 12px; font-weight: bold;">Good</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <p>Bearing Grease Life Remaining</p>
+              <p class="reading" id="grease-life-display">
+                <span id="GreaseLifePercentID">100.0</span>%
+                <span id="grease-indicator" style="margin-left: 8px; font-size: 12px; font-weight: bold;">Good</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <p>Brush Life Remaining</p>
+              <p class="reading" id="brush-life-display">
+                <span id="BrushLifePercentID">100.0</span>%
+                <span id="brush-indicator" style="margin-left: 8px; font-size: 12px; font-weight: bold;">Good</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <p>Predicted Life Remaining</p>
+              <p class="reading" id="predicted-life-display">
+                <span id="PredictedLifeHoursID">10000</span> hours
+                <span id="predicted-indicator" style="margin-left: 8px; font-size: 12px; font-weight: bold;">Good</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <p>Thermistor Temperature</p>
+              <p class="reading"><span id="temperatureThermistorID">0</span> °C</p>
+            </div>
+
+            <div class="card">
+              <p>Max Thermistor Temp</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="MaxTemperatureThermistorID">0</span><span>°C</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetThermTemp" id="ResetThermTemp" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetThermTemp')"
+                    id="ResetThermTemp_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+
+          </div>
+        </div>
+      </div>
+      <!-- Engine Live Data Sub-tab -->
+      <div id="livedata-engine" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Engine</div>
+          <div class="grid">
+            <div class="card">
+              <p>Engine Speed</p>
+              <p class="reading"><span id="RPMID">0</span> rev/min</p>
+            </div>
+            <div class="card">
+              <p>Engine Run Time</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="EngineRunTimeID">0</span><span>H:M:S</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetEngineRunTime" id="ResetEngineRunTime" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetEngineRunTime')"
+                    id="ResetEngineRunTime_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Engine Rev Counter</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="EngineCyclesID">0</span><span>rotations</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetEngineCycles" id="ResetEngineCycles" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetEngineCycles')"
+                    id="ResetEngineCycles_button">Reset</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <p>Max Engine RPM</p>
+              <div class="reading" style="display: flex; align-items: center; gap: 4px;">
+                <span id="RPMMaxID">0</span><span>rev/min</span>
+                <form action="/get" method="GET" target="hidden-form" style="display: inline;">
+                  <input type="hidden" name="ResetRPMMax" id="ResetRPMMax" value="0" />
+                  <input type="hidden" name="password" class="password_field" />
+                  <button type="button" class="btn-secondary" onclick="resetParameter('ResetRPMMax')"
+                    id="ResetRPMMax_button">Reset</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div> <!-- ADD THIS: Closes Engine settings-card -->
+      </div>
+
+      <!-- ESP32 Live Data Sub-tab -->
+      <div id="livedata-esp32" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">ESP32</div>
+          <div class="grid">
+            <!-- Current Session Performance -->
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Maximum Loop Time</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Maximum over last 5 seconds, updated every 1 second</span>
+                </span>
+              </p>
+              <p class="reading"><span id="MaximumLoopTimeID">0</span> μs</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Loop Time</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">The very last reading</span>
+                </span>
+              </p>
+              <p class="reading"><span id="LoopTimeID">0</span> μs</p>
+            </div>
+
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Free Heap Memory</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">100kB+ typical. Critical below 20kB, warning below 40kB</span>
+                </span>
+              </p>
+              <p class="reading"><span id="FreeHeapID">0</span> kB</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>WiFi Strength</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Above -67dBm good. Below -75dBm unstable</span>
+                </span>
+              </p>
+              <p class="reading"><span id="WifiStrengthID">0</span> dBm</p>
+            </div>
+
+            <div class="card">
+              <p>Current Session Duration</p>
+              <p class="reading"><span id="CurrentSessionDurationID">0</span> min</p>
+            </div>
+
+            <div class="card">
+              <p>Current WiFi Session Duration</p>
+              <p class="reading"><span id="CurrentWifiSessionDurationID">0</span> min</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Total Power Cycles</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">lifetime, or since re-flashing</span>
+                </span>
+              </p>
+              <p class="reading"><span id="totalPowerCyclesID">0</span> μs</p>
+            </div>
+
+
+
+
+            <!-- Last Session Statistics -->
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Last Session Max Loop Time</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Peak loop time from previous power cycle</span>
+                </span>
+              </p>
+              <p class="reading"><span id="LastSessionMaxLoopTimeID">0</span> μs</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Last Session Min Heap</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Lowest heap memory from previous power cycle</span>
+                </span>
+              </p>
+              <p class="reading"><span id="LastSessionMinHeapID">0</span> kB</p>
+            </div>
+
+            <div class="card">
+              <p>Last Session Duration</p>
+              <p class="reading"><span id="LastSessionDurationID">0</span> min</p>
+            </div>
+
+            <!-- WiFi Statistics -->
+            <div class="card">
+              <p>WiFi Reconnects (This Session)</p>
+              <p class="reading"><span id="WifiReconnectsThisSessionID">0</span></p>
+            </div>
+
+            <div class="card">
+              <p>WiFi Reconnects (Total)</p>
+              <p class="reading"><span id="WifiReconnectsTotalID">0</span></p>
+            </div>
+
+            <div class="card">
+              <p>Last Reset Reason</p>
+              <p class="reading"><span id="LastResetReasonID">Unknown</span></p>
+            </div>
+
+            <div class="card">
+              <p>Last WiFi Reset Reason</p>
+              <p class="reading"><span id="LastWifiResetReasonID">Unknown</span></p>
+            </div>
+
+            <!-- Performance Timing (moved to bottom) -->
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Analog Read Time (Max)</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">less than 3,000μs typical</span>
+                </span>
+              </p>
+              <p class="reading"><span id="AnalogReadTimeID">0</span> μs</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Wifi Send Time</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">2,000μs typical for data transmission</span>
+                </span>
+              </p>
+              <p class="reading"><span id="SendWifiTimeID">0</span> μs</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>VE Direct Read Time</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">12,000μs typical for Victron data</span>
+                </span>
+              </p>
+              <p class="reading"><span id="VeTimeID">0</span> μs</p>
+            </div>
+
+            <div class="card">
+              <p style="display: flex; align-items: center; justify-content: space-between;">
+                <span>WiFi Heartbeat</span>
+                <span class="tooltip" onclick="this.classList.toggle('active')">
+                  ℹ️
+                  <span class="tooltip-box">Increments with each packet sent</span>
+                </span>
+              </p>
+              <p class="reading"><span id="WifiHeartBeatID">0</span></p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Other Live Data Sub-tab -->
+      <div id="livedata-other" class="sub-tab-content">
+        <div class="settings-card">
+          <div class="section-title">Other</div>
+          <div class="grid">
+            <div class="card">
+              <p>GPS Heading</p>
+              <p class="reading"><span id="GPSHID">0</span> °</p>
+            </div>
+            <div class="card">
+              <p>ADS Ch3 Voltage</p>
+              <p class="reading"><span id="ADS3ID">0</span> V</p>
+            </div>
+            <div class="card">
+              <p>GPS Latitude</p>
+              <p class="reading"><span id="LatitudeNMEA_ID">0</span>°</p>
+            </div>
+            <div class="card">
+              <p>GPS Longitude</p>
+              <p class="reading"><span id="LongitudeNMEA_ID">0</span>°</p>
+            </div>
+            <div class="card">
+              <p># Satellites</p>
+              <p class="reading"><span id="SatelliteCountNMEA_ID">0</span></p>
+            </div>
+          </div> <!-- Closes .grid -->
+        </div> <!-- Closes settings-card (Other) -->
+      </div> <!-- CLOSE settings-grid for Live Data -->
+
+    </div>
+  </div>
+
+  <div id="plots" class="tab-content">
+    <div class="settings-card">
+      <div class="plot-container" id="voltage-plot"></div>
+    </div>
+    <div class="settings-card">
+      <div class="plot-container" id="temperature-plot"></div>
+    </div>
+    <div class="settings-card">
+      <div class="plot-container" id="current-temp-plot"></div>
+    </div>
+    <div class="settings-card">
+      <div class="plot-container" id="rpm-plot"></div>
+    </div>
+
+  </div>
+  <!-- Console -->
+  <div id="console" class="tab-content">
+    <div class="settings-card wide-card">
+      <div class="form-label">
+        Console
+        <button onclick="clearConsole()" style="font-size: 12px; margin-left: 10px;">Clear</button>
+      </div>
+      <div id="consoleOutput" class="responsive-console"></div>
+    </div>
+  </div>
+
+  <div id="corner-status" class="corner-status corner-status-connected">CONNECTED</div>
+
+  <!-- span id's are for display values that JavaScript updates dynamically
+Read-only .  Basically sensor readings, calculated values, button and setting echos -->
+  <div style="display:none;">
+    <span id="RPMMaxID" style="display:none;">0</span>
+    <span id="SoC_percentID" style="display:none;">0</span>
+    <span id="EngineRunTimeID" style="display:none;">0</span>
+    <span id="EngineCyclesID" style="display:none;">0</span>
+    <span id="AlternatorOnTimeID" style="display:none;">0</span>
+    <span id="AlternatorFuelUsedID" style="display:none;">0</span>
+    <span id="ChargedEnergyID" style="display:none;">0</span>
+    <span id="DischargedEnergyID" style="display:none;">0</span>
+    <span id="AlternatorChargedEnergyID" style="display:none;">0</span>
+    <span id="MaxAlternatorTemperatureF_ID" style="display:none;">0</span>
+    <span id="TemperatureLimitF_echo" style="display:none;">0</span>
+    <span id="FullChargeVoltage_echo" style="display:none;">0</span>
+    <span id="TargetAmps_echo" style="display:none;">0</span>
+    <span id="TargetFloatVoltage_echo" style="display:none;">0</span>
+    <span id="SwitchingFrequency_echo" style="display:none;">0</span>
+    <span id="interval_echo" style="display:none;">0</span>
+    <span id="FieldAdjustmentInterval_echo" style="display:none;">0</span>
+    <span id="ManualDuty_echo" style="display:none;">0</span>
+    <span id="SwitchControlOverride_echo" style="display:none;">0</span>
+    <span id="OnOff_echo" style="display:none;">0</span>
+    <span id="ManualFieldToggle_echo" style="display:none;">0</span>
+    <span id="HiLow_echo" style="display:none;">0</span>
+    <span id="LimpHome_echo" style="display:none;">0</span>
+    <span id="VeData_echo" style="display:none;">0</span>
+    <span id="NMEA0183Data_echo" style="display:none;">0</span>
+    <span id="NMEA2KData_echo" style="display:none;">0</span>
+    <span id="TargetAmpL_echo" style="display:none;">0</span>
+    <span id="CurrentThreshold_echo" style="display:none;">0</span>
+    <span id="PeukertExponent_echo" style="display:none;">0</span>
+    <span id="ChargeEfficiency_echo" style="display:none;">0</span>
+    <span id="ChargedVoltage_echo" style="display:none;">0</span>
+    <span id="TailCurrent_echo" style="display:none;">0</span>
+    <span id="ChargedDetectionTime_echo" style="display:none;">0</span>
+    <span id="IgnoreTemperature_echo" style="display:none;">0</span>
+    <span id="BMSLogic_echo" style="display:none;">0</span>
+    <span id="BMSLogicLevelOff_echo" style="display:none;">0</span>
+    <span id="AlarmActivate_echo" style="display:none;">0</span>
+    <span id="TempAlarm_echo" style="display:none;">0</span>
+    <span id="VoltageAlarmHigh_echo" style="display:none;">0</span>
+    <span id="VoltageAlarmLow_echo" style="display:none;">0</span>
+    <span id="CurrentAlarmHigh_echo" style="display:none;">0</span>
+    <span id="FourWay_echo" style="display:none;">0</span>
+    <span id="RPMScalingFactor_echo" style="display:none;">0</span>
+    <span id="ResetTemp_echo" style="display:none;">0</span>
+    <span id="ResetVoltage_echo" style="display:none;">0</span>
+    <span id="ResetCurrent_echo" style="display:none;">0</span>
+    <span id="ResetEngineRunTime_echo" style="display:none;">0</span>
+    <span id="ResetAlternatorOnTime_echo" style="display:none;">0</span>
+    <span id="ResetEnergy_echo" style="display:none;">0</span>
+    <span id="ResetAlternatorChargedEnergy_echo" style="display:none;">0</span>
+    <span id="ResetDischargedEnergy_echo" style="display:none;">0</span>
+    <span id="ResetFuelUsed_echo" style="display:none;">0</span>
+    <span id="ResetEngineCycles_echo" style="display:none;">0</span>
+    <span id="ResetRPMMax_echo" style="display:none;">0</span>
+    <span id="FuelUsedID" style="display:none;">0</span>
+    <span id="MaximumAllowedBatteryAmps_echo" style="display:none;">0</span>
+    <span id="ManualSOCPoint_echo" style="display:none;">0</span>
+    <span id="BatteryVoltageSource_echo" style="display:none;">0</span>
+    <span id="AmpControlByRPM_echo" style="display:none;">0</span>
+    <span id="RPM1_echo" style="display:none;">0</span>
+    <span id="RPM2_echo" style="display:none;">0</span>
+    <span id="RPM3_echo" style="display:none;">0</span>
+    <span id="RPM4_echo" style="display:none;">0</span>
+    <span id="Amps1_echo" style="display:none;">0</span>
+    <span id="Amps2_echo" style="display:none;">0</span>
+    <span id="Amps3_echo" style="display:none;">0</span>
+    <span id="Amps4_echo" style="display:none;">0</span>
+    <span id="RPM5_echo" style="display:none;">0</span>
+    <span id="RPM6_echo" style="display:none;">0</span>
+    <span id="RPM7_echo" style="display:none;">0</span>
+    <span id="Amps5_echo" style="display:none;">0</span>
+    <span id="Amps6_echo" style="display:none;">0</span>
+    <span id="Amps7_echo" style="display:none;">0</span>
+    <span id="ShuntResistanceMicroOhm_echo" style="display:none;">0</span>
+    <span id="InvertAltAmps_echo" style="display:none;">0</span>
+    <span id="InvertBattAmps_echo" style="display:none;">0</span>
+    <span id="MaxDuty_echo" style="display:none;">0</span>
+    <span id="MinDuty_echo" style="display:none;">0</span>
+    <span id="FieldResistance_echo" style="display:none;">0</span>
+    <span id="maxPoints_echo" style="display:none;">0</span>
+    <span id="BatteryCOffset_echo" style="display:none;">0</span>
+    <span id="AlternatorCOffset_echo" style="display:none;">0</span>
+    <span id="BatteryCapacity_Ah_echo" style="display:none;">0</span>
+    <span id="AmpSrc_echo" style="display:none;">0</span>
+    <span id="R_fixed_echo" style="display:none;">0</span>
+    <span id="Beta_echo" style="display:none;">0</span>
+    <span id="T0_C_echo" style="display:none;">0</span>
+    <span id="TempSource_echo" style="display:none;">0</span>
+    <span id="IgnitionOverride_echo" style="display:none;">0</span>
+    <span id="AlarmLatchEnabled_echo" style="display:none;">0</span>
+    <span id="AlarmTest_echo" style="display:none;">0</span>
+    <span id="ResetAlarmLatch_echo" style="display:none;">0</span>
+    <span id="AlarmLatchState_display" style="display:none;">Normal</span>
+    <span id="ForceFloat_echo" style="display:none;">0</span>
+    <span id="bulkCompleteTime_echo" style="display:none;">0</span>
+    <span id="FLOAT_DURATION_echo" style="display:none;">0</span>
+    <span id="AutoShuntGainCorrection_echo" style="display:none;">0</span>
+    <span id="AutoAltCurrentZero_echo" style="display:none;">0</span>
+    <span id="WindingTempOffset_echo" style="display:none;">0</span>
+    <span id="PulleyRatio_echo" style="display:none;">0</span>
+    <span id="ManualLifePercentage_echo" style="display:none;">0</span>
+    <span id="LastSessionDurationID" style="display:none;">0</span>
+    <span id="LastSessionMaxLoopTimeID" style="display:none;">0</span>
+    <span id="LastSessionMinHeapID" style="display:none;">0</span>
+    <span id="WifiReconnectsThisSessionID" style="display:none;">0</span>
+    <span id="WifiReconnectsTotalID" style="display:none;">0</span>
+    <span id="CurrentSessionDurationID" style="display:none;">0</span>
+    <span id="CurrentWifiSessionDurationID" style="display:none;">0</span>
+    <span id="LastResetReasonID" style="display:none;">0</span>
+    <span id="LastWifiResetReasonID" style="display:none;">0</span>
+    <span id="totalPowerCyclesID" style="display:none;">0</span>
+    <span id="totalPowerCyclesID" style="display:none;">0</span>
+    <span id="BatteryCurrentSource_echo" style="display:none;">0</span>
+    <span id="InvertBatteryMonitorAmps_echo" style="display:none;">0</span>
+    <span id="webgaugesinterval_echo" style="display:none;">0</span>
+    <span id="plotTimeWindow_echo" style="display:none;">0</span>
+
+    <!-- Input id's are for User input aka Settings
+Form submission - values that get sent to the server
+Two-way data binding - both read and write -->
+    <input id="TemperatureLimitF" style="display:none;" value="0" />
+    <input id="FullChargeVoltage" style="display:none;" value="0" />
+    <input id="TargetAmps" style="display:none;" value="0" />
+    <input id="TargetFloatVoltage" style="display:none;" value="0" />
+    <input id="SwitchingFrequency" style="display:none;" value="0" />
+    <input id="interval" style="display:none;" value="0" />
+    <input id="FieldAdjustmentInterval" style="display:none;" value="0" />
+    <input id="ManualDuty" style="display:none;" value="0" />
+    <input id="SwitchControlOverride" name="SwitchControlOverride" type="number" value style="display:none;" />
+    <input id="ManualFieldToggle" name="ManualFieldToggle" type="number" value style="display:none;" />
+    <input id="HiLow" name="HiLow" type="number" value style="display:none;" />
+    <input id="LimpHome" name="LimpHome" type="number" value style="display:none;" />
+    <input id="VeData" name="VeData" type="number" value style="display:none;" />
+    <input id="NMEA0183Data" name="NMEA0183Data" type="number" value style="display:none;" />
+    <input id="NMEA2KData" name="NMEA2KData" type="number" value style="display:none;" />
+    <input id="TargetAmpL" style="display:none;" value="0" />
+    <input id="CurrentThreshold" style="display:none;" value="0" />
+    <input id="PeukertExponent" style="display:none;" value="0" />
+    <input id="ChargeEfficiency" style="display:none;" value="0" />
+    <input id="ChargedVoltage" style="display:none;" value="0" />
+    <input id="TailCurrent" style="display:none;" value="0" />
+    <input id="ChargedDetectionTime" style="display:none;" value="0" />
+    <input id="IgnoreTemperature" name="IgnoreTemperature" type="number" value style="display:none;" />
+    <input id="BMSLogic" name="BMSLogic" type="number" value style="display:none;" />
+    <input id="BMSLogicLevelOff" name="BMSLogicLevelOff" type="number" value style="display:none;" />
+    <input id="AlarmActivate" name="AlarmActivate" type="number" value style="display:none;" />
+    <input id="TempAlarm" style="display:none;" value="0" />
+    <input id="VoltageAlarmHigh" style="display:none;" value="0" />
+    <input id="VoltageAlarmLow" style="display:none;" value="0" />
+    <input id="CurrentAlarmHigh" style="display:none;" value="0" />
+    <input id="FourWay" style="display:none;" value="0" />
+    <input id="RPMScalingFactor" style="display:none;" value="0" />
+    <input type="hidden" name="ResetTemp" id="ResetTemp" value="0" />
+    <input type="hidden" name="ResetVoltage" id="ResetVoltage" value="0" />
+    <input type="hidden" name="ResetCurrent" id="ResetCurrent" value="0" />
+    <input type="hidden" name="ResetEngineRunTime" id="ResetEngineRunTime" value="0" />
+    <input type="hidden" name="ResetAlternatorOnTime" id="ResetAlternatorOnTime" value="0" />
+    <input type="hidden" name="ResetEnergy" id="ResetEnergy" value="0" />
+    <input type="hidden" name="ResetAlternatorChargedEnergy" id="ResetAlternatorChargedEnergy" value="0" />
+    <input type="hidden" name="ResetDischargedEnergy" id="ResetDischargedEnergy" value="0" />
+    <input type="hidden" name="ResetFuelUsed" id="ResetFuelUsed" value="0" />
+    <input type="hidden" name="ResetEngineCycles" id="ResetEngineCycles" value="0" />
+    <input type="hidden" name="ResetRPMMax" id="ResetRPMMax" value="0" />
+    <input id="MaximumAllowedBatteryAmps" style="display:none;" value="0" />
+    <input id="ManualSOCPoint" style="display:none;" value="0" />
+    <input id="BatteryVoltageSource" style="display:none;" value="0" />
+    <input id="AmpSrc" style="display:none;" value="0" />
+    <input id="AmpControlByRPM" name="AmpControlByRPM" type="number" value style="display:none;" />
+    <input id="RPM1" style="display:none;" value="0" />
+    <input id="RPM2" style="display:none;" value="0" />
+    <input id="RPM3" style="display:none;" value="0" />
+    <input id="RPM4" style="display:none;" value="0" />
+    <input id="Amps1" style="display:none;" value="0" />
+    <input id="Amps2" style="display:none;" value="0" />
+    <input id="Amps3" style="display:none;" value="0" />
+    <input id="Amps4" style="display:none;" value="0" />
+    <input id="RPM5" style="display:none;" value="0" />
+    <input id="RPM6" style="display:none;" value="0" />
+    <input id="RPM7" style="display:none;" value="0" />
+    <input id="Amps5" style="display:none;" value="0" />
+    <input id="Amps6" style="display:none;" value="0" />
+    <input id="Amps7" style="display:none;" value="0" />
+    <input id="ShuntResistanceMicroOhm" style="display:none;" value="0" />
+    <input id="InvertAltAmps" name="InvertAltAmps" type="number" value style="display:none;" />
+    <input id="InvertBattAmps" name="InvertBattAmps" type="number" value style="display:none;" />
+    <input id="MaxDuty" style="display:none;" value="0" />
+    <input id="MinDuty" style="display:none;" value="0" />
+    <input id="FieldResistance" style="display:none;" value="0" />
+    <input id="maxPoints" style="display:none;" value="0" />
+    <input id="AlternatorCOffset" style="display:none;" value="0" />
+    <input id="BatteryCOffset" style="display:none;" value="0" />
+    <input id="BatteryCapacity_Ah" style="display:none;" value="0" />
+    <input id="R_fixed" style="display:none;" value="0" />
+    <input id="Beta" style="display:none;" value="0" />
+    <input id="T0_C" style="display:none;" value="0" />
+    <input id="TempSource" name="TempSource" type="number" value style="display:none;" />
+    <input id="IgnitionOverride" name="IgnitionOverride" type="number" value style="display:none;" />
+    <input id="AlarmLatchEnabled" name="AlarmLatchEnabled" type="number" value style="display:none;" />
+    <input id="AlarmTest" style="display:none;" value="0" />
+    <input id="ResetAlarmLatch" style="display:none;" value="0" />
+    <input id="ForceFloat" name="ForceFloat" type="number" value style="display:none;" />
+    <input id="bulkCompleteTime" style="display:none;" value="0" />
+    <input id="FLOAT_DURATION" style="display:none;" value="0" />
+    <input id="AutoShuntGainCorrection" name="AutoShuntGainCorrection" type="number" value style="display:none;" />
+    <input id="AutoAltCurrentZero" name="AutoAltCurrentZero" type="number" value style="display:none;" />
+    <input id="WindingTempOffset" style="display:none;" value="50.0" />
+    <input id="PulleyRatio" style="display:none;" value="2.00" />
+    <input id="ManualLifePercentage" style="display:none;" value="100" />
+    <input id="BatteryCurrentSource" style="display:none;" value="0" />
+    <input id="InvertBatteryMonitorAmps" name="InvertBatteryMonitorAmps" type="number" value style="display:none;" />
+    <input id="webgaugesinterval" style="display:none;" value="0" />
+    <input id="plotTimeWindow" style="display:none;" value="0" />
+
+  </div>
+</body>
+
+</html>

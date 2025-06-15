@@ -1,0 +1,1036 @@
+/* 
+ * AI_SUMMARY: Alternator Regulator Project - This file is the styling for the served page
+ * AI_PURPOSE: 
+ * AI_INPUTS: 
+ * AI_OUTPUTS: 
+ * AI_DEPENDENCIES: 
+ * AI_RISKS: Styling was added ad-hoc, does not follow consistent patterns.  Remember to consider dark mode on every change to styling.
+ * AI_OPTIMIZE: When adding new styles, try to first use or modify existing styles whenever possible, to avoid bloat.
+ */
+
+:root {
+  --primary: #333333;
+  /* Dark gray primary */
+  --accent: #00a19a;
+  /* Orange accent */
+  --bg-light: #f5f5f5;
+  /* Very light gray background */
+  --text-dark: #333333;
+  /* Dark text */
+  --text-light: #ffffff;
+  /* Light text */
+  --card-light: #ffffff;
+  /* White card background */
+  --border: #dddddd;
+  /* Light border */
+  --reading: #333333;
+  /* Reading text color (changed from green) */
+  --radius: 4px;
+  /* Border radius */
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 0.5rem;
+  background-color: var(--bg-light);
+  color: var(--text-dark);
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+/* HEARTBEAT Field status indicator styles */
+.field-status-active {
+  color: #00a19a !important;
+  animation: field-heartbeat 5s ease-in-out infinite;
+}
+
+.field-status-inactive {
+  color: #999999 !important;
+  animation: none;
+}
+
+@keyframes field-heartbeat {
+
+  0%,
+  100% {
+    text-shadow: 0 0 3px rgba(0, 161, 154, 0.3);
+    transform: scale(1);
+  }
+
+  50% {
+    text-shadow: 0 0 8px rgba(0, 161, 154, 0.8),
+      0 0 12px rgba(0, 161, 154, 0.4),
+      0 0 16px rgba(0, 161, 154, 0.2);
+    transform: scale(1.05);
+  }
+}
+
+/* Permanent Header */
+
+.permanent-header {
+  background: linear-gradient(135deg, var(--card-light), #f8f9fa);
+  border-bottom: 3px solid var(--accent);
+  padding: 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reading-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.reading-label {
+  font-size: 11px;
+  color: var(--text-dark);
+  font-weight: bold;
+  text-align: center;
+}
+
+.reading-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--text-dark);
+  text-align: center;
+}
+
+.sensor-readings-tier {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+}
+
+.reading-pair {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 160px;
+}
+
+.settings-access-tier {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.alternator-control-tier {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+
+@media (max-width: 480px) {
+  .reading-group {
+    flex-direction: column;
+    gap: 8px;
+    min-width: 120px;
+  }
+
+  .readings-section {
+    gap: 15px;
+  }
+}
+
+.alternator-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg-light);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.control-label {
+  font-weight: bold;
+  color: var(--text-dark);
+  white-space: nowrap;
+}
+
+.lock-status-locked {
+  font-size: 16px;
+  font-weight: 900 !important;
+  margin-bottom: 6px;
+  color: #ff0000 !important;
+  text-align: center;
+}
+
+.lock-status-unlocked {
+  font-size: 16px;
+  font-weight: 900 !important;
+  margin-bottom: 6px;
+  color: var(--accent) !important;
+  text-align: center;
+}
+
+
+.password-form-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.password-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+  max-width: 400px;
+  /* Add this to limit width */
+}
+
+/* Make sure the lock status is also centered */
+#lock-status {
+  text-align: center;
+  width: 100%;
+}
+
+.password-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.password-form input[type="password"].password-input {
+  flex: 1;
+  min-width: 80px;
+  max-width: 160px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  width: auto;
+}
+
+.password-form .password-button {
+  background-color: #e0e0e0;
+  color: #000;
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 70px;
+}
+
+.password-form .password-button:hover {
+  background-color: #cccccc;
+}
+
+.password-form .show-checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.password-form .show-checkbox {
+  margin: 0;
+}
+
+.password-form .show-label {
+  font-size: 12px;
+  margin: 0;
+  user-select: none;
+}
+
+@media (max-width: 480px) {
+  .permanent-header {
+    padding: 12px;
+  }
+
+  .reading-value {
+    font-size: 16px;
+  }
+
+  .password-form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .password-input-group {
+    justify-content: space-between;
+  }
+
+  .password-form .password-input {
+    max-width: none;
+    flex: 1;
+  }
+
+  .password-form .show-checkbox-container {
+    justify-self: flex-end;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 320px) {
+  .password-form .password-input {
+    min-width: 60px;
+  }
+
+  .password-form .password-button {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
+
+/* Dark mode banner styling */
+.dark-mode .permanent-header {
+  background: linear-gradient(135deg, #1e1e1e, #2a2a2a);
+  border-bottom: 3px solid var(--accent);
+  color: #cccccc;
+}
+
+.dark-mode .lock-status-locked {
+  color: #ff6666 !important;
+}
+
+.dark-mode .lock-status-unlocked {
+  color: var(--accent) !important;
+}
+
+.dark-mode .reading-label {
+  color: #cccccc;
+}
+
+.dark-mode .reading-value {
+  color: #cccccc;
+}
+
+.dark-mode .control-label {
+  color: #cccccc;
+}
+
+.dark-mode .alternator-control {
+  background: #2a2a2a;
+  border: 1px solid #444444;
+}
+
+.dark-mode .password-form .password-input {
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border-color: #444444;
+}
+
+.dark-mode .password-form .password-button {
+  background-color: #2a2a2a;
+  color: #aaaaaa;
+}
+
+.dark-mode .password-form .password-button:hover {
+  background-color: #444444;
+}
+
+
+/* Input Validation, RPM table and others */
+.input-error {
+  border: 2px solid red;
+}
+
+
+/* Tool tip tooltip stuff */
+.tooltip {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: bold;
+  font-size: 13px;
+  position: relative;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.tooltip-box {
+  display: none;
+  position: absolute;
+  top: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: normal;
+  z-index: 999;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  max-width: 300px;
+  min-width: 180px;
+  width: fit-content;
+}
+
+
+.tooltip.active .tooltip-box {
+  display: block;
+}
+
+
+/* Main Tab Navigation */
+.main-tabs {
+  display: flex;
+  margin-bottom: 0;
+  gap: 2px;
+}
+
+.main-tab {
+  padding: 14px 20px;
+  border: 2px solid var(--border);
+  background: var(--bg-light);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-dark);
+  border-radius: var(--radius) var(--radius) 0 0;
+  transition: all 0.3s ease;
+  border-bottom: none;
+  flex: 1;
+  min-width: 100px;
+}
+
+.main-tab:hover {
+  background: var(--card-light);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.main-tab.active {
+  background: var(--card-light);
+  color: var(--accent);
+  border-color: var(--accent);
+  border-bottom: 2px solid var(--card-light);
+  z-index: 2;
+  position: relative;
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+h2 {
+  color: var(--text-dark);
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0.25rem;
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 18px;
+}
+
+/* Sub Tab Navigation */
+.sub-tabs {
+  background: var(--card-light);
+  border: 2px solid var(--accent);
+  border-top: none;
+  padding: 16px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.sub-tab {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-light);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dark);
+  border-radius: 20px;
+  transition: all 0.3s ease;
+  min-width: 80px;
+  flex: 0 0 auto;
+}
+
+.sub-tab:hover {
+  background: rgba(0, 161, 154, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sub-tab.active {
+  background: var(--accent);
+  color: var(--card-light);
+  border-color: var(--accent);
+}
+
+.sub-tab-content {
+  display: none;
+}
+
+.sub-tab-content.active {
+  display: block;
+}
+
+/* For fixing plot legend appearance */
+.u-legend .u-value {
+  display: none !important;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"] {
+  background: #ffffff;
+  color: var(--text-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  /* Consistent with button padding */
+  height: 28px;
+  /* Match button height */
+  box-sizing: border-box;
+  font-size: 12px;
+  /* Match button font size */
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  background: var(--card-light);
+  padding: 10px;
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin-bottom: 4px;
+}
+
+.card p {
+  margin: 0.25rem 0;
+}
+
+.card p:first-child {
+  font-weight: bold;
+  color: var(--text-dark);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.25rem;
+  font-size: 13px;
+}
+
+.reading {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.reading span {
+  color: var(--reading);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.settings-card {
+  background: var(--card-light);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  background-color: #f0f0f0;
+  color: var(--text-dark);
+  padding: 6px 10px;
+  margin: 0 0 10px 0;
+  border-radius: var(--radius);
+  font-weight: bold;
+  border-left: 2px solid var(--accent);
+  font-size: 14px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+
+.confirm-msg {
+  transition: opacity 1s ease;
+  opacity: 1;
+}
+
+.confirm-msg.fade-out {
+  opacity: 0;
+}
+
+.form-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 8px;
+  max-width: 480px;
+}
+
+.form-label {
+  flex: 1;
+  text-align: left;
+  padding-right: 10px;
+}
+
+.form-input {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* Let this one card go full width */
+.wide-card {
+  max-width: 100% !important;
+}
+
+/* Console Sizing */
+.responsive-console {
+  font-family: monospace;
+  font-size: 13px;
+  background: #111;
+  color: #0f0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  border-radius: var(--radius);
+  width: 100%;
+  height: 200px;
+}
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  .responsive-console {
+    height: 300px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-console {
+    height: 400px;
+    max-width: 1200px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .responsive-console {
+    height: 500px;
+    max-width: 1400px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .responsive-console {
+    height: 600px;
+    max-width: 1600px;
+  }
+}
+
+/* Dark mode styling for console */
+.dark-mode .responsive-console {
+  background: #000;
+  color: #0f0;
+  border-color: #333;
+}
+
+
+/* BUTTONS!!  */
+/* Unified Button System */
+/* Unified Button System - Updated for better alignment */
+.btn-primary {
+  background-color: #555555;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  /* Reduced from 8px 16px */
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+  /* Reduced from 14px */
+  transition: all 0.3s ease;
+  min-width: 60px;
+  /* Reduced from 70px */
+  height: 28px;
+  /* Match input field height */
+  line-height: 1.2;
+  /* Better vertical alignment */
+}
+
+.btn-primary:hover {
+  background-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:disabled {
+  background-color: #999;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background-color: #e0e0e0;
+  color: #333;
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  /* Reduced from 6px 12px */
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 11px;
+  /* Reduced from 12px */
+  transition: all 0.3s ease;
+  height: 24px;
+  /* Smaller for secondary buttons */
+  line-height: 1.2;
+}
+
+.btn-secondary:hover {
+  background-color: #d0d0d0;
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* Active state for press feedback */
+.btn-secondary:active {
+  background-color: #c0c0c0;
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(0);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Pulse animation for visual feedback */
+@keyframes button-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 161, 154, 0.4);
+  }
+
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 4px rgba(0, 161, 154, 0.2);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 161, 154, 0);
+  }
+}
+
+.btn-secondary.button-pulse {
+  animation: button-pulse 0.4s ease-out;
+}
+
+/* Dark mode styles */
+.dark-mode .btn-secondary {
+  background-color: #333333;
+  color: #aaaaaa;
+  border: 1px solid #555555;
+}
+
+.dark-mode .btn-secondary:hover {
+  background-color: #444444;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dark-mode .btn-secondary:active {
+  background-color: #2a2a2a;
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(0);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark mode pulse animation */
+.dark-mode .btn-secondary.button-pulse {
+  animation: button-pulse 0.4s ease-out;
+}
+
+/* Locking Settings Capability */
+
+.locked input,
+.locked select,
+.locked button,
+.locked label.switch input {
+  /* Add this line */
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.locked label.switch {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+  .settings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+
+  .main-tab {
+    font-size: 12px;
+    padding: 8px 12px;
+    min-width: 80px;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body {
+    font-size: 13px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+/* Password form responsive breakpoints */
+@media (max-width: 480px) {
+  .password-form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .password-input-group {
+    justify-content: space-between;
+  }
+
+  .password-form .password-input {
+    max-width: none;
+    flex: 1;
+  }
+
+  .password-form .show-checkbox-container {
+    justify-self: flex-end;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 320px) {
+  .password-form .password-input {
+    min-width: 60px;
+  }
+
+  .password-form .password-button {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
+
+/* Toggle switch styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked+.slider {
+  background-color: #00a19a;
+}
+
+input:checked+.slider:before {
+  transform: translateX(20px);
+}
+
+.toggle-label {
+  font-size: 0.9em;
+  margin: 0 8px;
+  vertical-align: middle;
+}
+
+.toggle-label {
+  font-size: 0.9em;
+  margin: 0 8px;
+  vertical-align: middle;
+}
+
+
+
+.corner-status {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 999;
+  opacity: 0.9;
+}
+
+.corner-status-connected {
+  background-color: #00a19a;
+}
+
+.corner-status-disconnected {
+  background-color: #F44336;
+}
+
+/* Dark Mode */
+.dark-mode {
+  --primary: gray;
+  --accent: #00a19a;
+  --bg-light: #121212;
+  --text-dark: gray;
+  --text-light: gray;
+  --card-light: #1e1e1e;
+  --border: #444444;
+  --reading: gray;
+}
+
+.dark-mode input[type="text"],
+.dark-mode input[type="number"],
+.dark-mode input[type="password"] {
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border-color: #444444;
+}
+
+.dark-mode .password-form .password-input {
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border-color: #444444;
+}
+
+.dark-mode .password-form .password-button {
+  background-color: #2a2a2a;
+  color: #aaaaaa;
+}
+
+.dark-mode .section-title {
+  background-color: #222222;
+  color: #cccccc;
+}
+
+.dark-mode input[type="submit"] {
+  background-color: #2a2a2a;
+  color: #aaaaaa;
+}
+
+.dark-mode input[type="submit"]:hover {
+  background-color: #444444;
+}
+
+.slider {
+  background-color: #dddddd;
+  /* light gray */
+  box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.slider:before {
+  background-color: #fefefe;
+  /* near-white */
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .slider {
+  background-color: #333333;
+}
+
+.dark-mode .slider:before {
+  background-color: gray;
+  border: 1px solid #444444;
+}
+
+.dark-mode input[type="checkbox"] {
+  filter: brightness(0.6);
+  background-color: #444444;
+  border: 1px solid #666666;
+}
