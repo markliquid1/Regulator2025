@@ -483,6 +483,8 @@ const unsigned long RESTART_INTERVAL = 3600000;  // 1 hour in milliseconds = 360
 
 int BatteryVoltageSource = 0;  // select  "0">INA228    value="1">ADS1115     value="2">VictronVeDirect     value="3">NMEA0183     value="4">NMEA2K
 int AmpControlByRPM = 0;       // this is the toggle
+int BatteryCurrentSource = 1;  // 0=INA228, 1=NMEA2K Batt, 2=NMEA0183 Batt, 3=Victron Batt
+int InvertBatteryMonitorAmps = 0;  // Separate inversion for battery monitoring
 // In lieu of a table for RPM based charging....
 int RPM1 = 0;
 int RPM2 = 500;
@@ -570,6 +572,7 @@ VeDirectFrameHandler myve;
 AsyncWebServer server(80);                  // Create AsyncWebServer object on port 80
 AsyncEventSource events("/events");         // Create an Event Source on /events
 unsigned long webgaugesinterval = 1000;     // delay in ms between sensor updates on webpage
+int plotTimeWindow = 120;      // Plot time window in seconds
 unsigned long healthystuffinterval = 5000;  // check hardware health parameters only every 5 seconds, not that they consume much
 
 // WiFi provisioning settings
@@ -705,12 +708,14 @@ void setup() {
   captureResetReason();
   // Capture previous session data before starting new session
   unsigned long previousSessionDuration = (millis() - sessionStartTime) / 60000;
-  if (sessionStartTime > 0 && previousSessionDuration > 0) {
-    // Only update if we had a valid previous session
+
+if (sessionStartTime > 0) {  // Only if there was a previous session
+    unsigned long previousSessionDuration = millis() / 60000;  // Total uptime in minutes
     lastSessionDuration = previousSessionDuration;
     lastSessionMaxLoopTime = MaximumLoopTime;
     lastSessionMinHeap = sessionMinHeap;
-    lastSessionEndTime = millis() / 60000;  // Store as minutes since boot
+    lastSessionEndTime = millis() / 60000;
+    SaveAllData();    // Save immediately to persist
   }
   // Initialize current session variables
   sessionStartTime = millis();
