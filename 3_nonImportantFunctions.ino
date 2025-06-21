@@ -302,7 +302,7 @@ void Attitude(const tN2kMsg &N2kMsg) {
 //NMEA 2000 message handler
 void HandleNMEA2000Msg(const tN2kMsg &N2kMsg) {
   int iHandler;
-
+ 
   // Find handler
   if (NMEA2KVerbose == 1) {
     OutputStream->print("In Main Handler: ");
