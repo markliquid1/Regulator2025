@@ -47,6 +47,8 @@ INA228 INA(0x40);
 #include "esp_log.h"                     // get rid of spam in serial monitor
 #include <TinyGPSPlus.h>                 // used for NMEA0183, was working great but not currently implemented
 #include <math.h>                        // For pow() function needed by Peukert calculation
+#include "nvs_flash.h"                   //for persistent storage that's better than Flash
+#include "nvs.h"                         //for persistent storage that's better than Flash
 
 //WIFI STUFF
 //these will be the custom network created by the user in AP mode
@@ -91,18 +93,21 @@ int cpuLoadCore1 = 0;             // CPU load percentage for Core 1
 //More health monitoring
 // Session and health tracking (add with other globals)
 unsigned long sessionStartTime = 0;
+unsigned long CurrentWifiSessionDuration = 0;
 unsigned long wifiSessionStartTime = 0;
 unsigned long lastWifiSessionDuration = 0;  // Duration of last WiFi session (minutes, persistent)
-unsigned long lastSessionEndTime = 0;       // Timestamp when last session ended (persistent)
-unsigned long lastSessionDuration = 0;  // minutes, persistent
-int lastSessionMaxLoopTime = 0;         // microseconds, persistent
-int lastSessionMinHeap = 999999;        // KB, persistent
-int wifiReconnectsThisSession = 0;
-int wifiReconnectsTotal = 0;             // persistent
-String lastResetReason = "Unknown";      // persistent
-String lastWifiResetReason = "Unknown";  // persistent
-int sessionMinHeap = 999999;             // Current session minimum
-int totalPowerCycles = 0;                // Total number of power cycles (persistent)
+unsigned long LastSessionDuration = 0;      // minutes, persistent
+unsigned long CurrentSessionDuration = 0; //minutes
+int LastSessionMaxLoopTime = 0;   // milliseconds, persistent
+int MaxLoopTime = 0;              // not displayed on client, but available here
+int lastSessionMinHeap = 999999;  // KB, persistent
+int wifiReconnectsThisSession = 0;    // not persistent 
+int wifiReconnectsTotal = 0;  // persistent
+int EXTRA;
+int LastResetReason;          // why the ESP32 restarted most recently
+int ancientResetReason = 0;   // why the ESP32 restarted 2 sessions ago
+int sessionMinHeap = 999999;  // Current session minimum
+int totalPowerCycles = 0;     // Total number of power cycles (persistent)
 // Warning throttling
 unsigned long lastHeapWarningTime = 0;
 unsigned long lastStackWarningTime = 0;
@@ -189,10 +194,9 @@ unsigned long bulkCompleteTimer = 0;    // this is a timer, don't change
 unsigned long FLOAT_DURATION = 12 * 3600;  // 12 hours in seconds
 unsigned long floatStartTime = 0;
 
-float dutyCycle = 5;
 float dutyStep = 0.8;  // duty step to adjust field target by, each time the loop runs.  Larger numbers = faster response, less stability
 float MaxDuty = 99.0;
-float MinDuty = 18.0;
+float MinDuty = 1.0;       //18
 int ManualDutyTarget = 4;  // example manual override value
 
 
@@ -231,7 +235,7 @@ float Bcur;                             // battery shunt current from INA228
 float targetCurrent;                    // This is used in the field adjustment loop, gets set to the desired source of current info (ie battery shunt, alt hall sensor, victron, etc.)
 float IBV;                              // Ina 228 battery voltage
 float IBVMax = NAN;                     // used to track maximum battery voltage
-float DutyCycle;                        // Field outout %--- this is just what's transmitted over Wifi (case sensitive)
+float dutyCycle;                        // Field outout %--- this is just what's transmitted over Wifi (case sensitive)
 float FieldResistance = 2;              // Field resistance in Ohms usually between 2 and 6 Ω, changes 10-20% with temp
 float vvout;                            // Calculated field volts (approximate)
 float iiout;                            // Calculated field amps (approximate)
@@ -296,7 +300,7 @@ int ADS1115Disconnected = 0;
 
 // Battery SOC Monitoring Variables
 int BatteryCapacity_Ah = 300;         // Battery capacity in Amp-hours
-int SoC_percent = 7500;               // State of Charge percentage (0-100) but have to multiply by 100 for annoying reasons, but go with it
+int SOC_percent = 7500;               // State of Charge percentage (0-100) but have to multiply by 100 for annoying reasons, but go with it
 int ManualSOCPoint = 25;              // Used to set it manually
 int CoulombCount_Ah_scaled = 7500;    // Current energy in battery (Ah × 100 for precision)
 float PeukertRatedCurrent_A = 15.0f;  // Standard discharge rate for Peukert (C/20), will be calculated from capacity
@@ -309,7 +313,7 @@ unsigned long lastSOCUpdateTime = 0;      // Last time SOC was updated
 unsigned long lastEngineMonitorTime = 0;  // Last time engine metrics were updated
 unsigned long lastDataSaveTime = 0;       // Last time data was saved to LittleFS
 int SOCUpdateInterval = 2000;             // Update SOC every 2 seconds.   Don't make this smaller than 1 without study
-int DataSaveInterval = 60000;             // Save data every 1 minutes, good for 20 year durability of flash memory
+int DataSaveInterval = 60000;             // Save data every 1 minutes, good for 20 year durability of flash memory MIGHT NEED LOAD LEVELING TO ACHIEVE THIS LATER
 // Accumulators for runtime tracking
 unsigned long engineRunAccumulator = 0;     // Milliseconds accumulator for engine runtime
 unsigned long alternatorOnAccumulator = 0;  // Milliseconds accumulator for alternator runtime
@@ -389,7 +393,7 @@ int GPIO33_Status;                               // for alarm mirror light on Cl
 
 //More Settings
 // SOC Parameters
-int CurrentThreshold_scaled = 100;    // Ignore currents below this (A × 100)
+int CurrentThreshold = 1;             // Ignore currents below this (A × 100)
 int PeukertExponent_scaled = 105;     // Peukert exponent × 100 (112 = 1.12)
 int ChargeEfficiency_scaled = 99;     // Charging efficiency % (0-100)
 int ChargedVoltage_Scaled = 1450;     // Voltage threshold for "charged" (V × 100)
@@ -397,8 +401,8 @@ int TailCurrent = 2;                  // A percentage of battery capacity in amp
 int ShuntResistanceMicroOhm = 100;    // Shunt resistance in microohms
 int ChargedDetectionTime = 1000;      // Time at charged state to consider 100% (seconds)
 int IgnoreTemperature = 0;            // If no temp sensor, set to 1
-int BMSlogic = 0;                     // if BMS is asked to turn the alternator on and off
-int BMSLogicLevelOff = 0;             // set to 0 if the BMS gives a low signal (<3V?) when no charging is desired
+int bmsLogic = 0;                     // if BMS is asked to turn the alternator on and off
+int bmsLogicLevelOff = 0;             // set to 0 if the BMS gives a low signal (<3V?) when no charging is desired
 bool chargingEnabled;                 // defined from other variables
 bool bmsSignalActive;                 // Read from digital input pin 36
 int AlarmActivate = 0;                // set to 1 to enable alarm conditions
@@ -449,7 +453,7 @@ bool alternatorIsOn = false;  // Current alternator state
 unsigned long ChargedEnergy = 0;            // Total charged energy from battery (Wh)
 unsigned long DischargedEnergy = 0;         // Total discharged energy from battery (Wh)
 unsigned long AlternatorChargedEnergy = 0;  // Total energy from alternator (Wh)
-int FuelEfficiency_scaled = 250;  // Engine efficiency: Wh per mL of fuel (× 100)
+int FuelEfficiency_scaled = 250;            // Engine efficiency: Wh per mL of fuel (× 100)
 // Engine & Alternator Runtime Tracking
 int EngineRunTime = 0;          // Time engine has been spinning (minutes)
 int EngineCycles = 0;           // Average RPM * Minutes of run time
@@ -483,8 +487,8 @@ const unsigned long RESTART_INTERVAL = 3600000;  // 1 hour in milliseconds = 360
 
 int BatteryVoltageSource = 0;  // select  "0">INA228    value="1">ADS1115     value="2">VictronVeDirect     value="3">NMEA0183     value="4">NMEA2K
 int AmpControlByRPM = 0;       // this is the toggle
-int BatteryCurrentSource = 1;  // 0=INA228, 1=NMEA2K Batt, 2=NMEA0183 Batt, 3=Victron Batt
-int InvertBatteryMonitorAmps = 0;  // Separate inversion for battery monitoring
+int BatteryCurrentSource = 0;  // 0=INA228, 1=NMEA2K Batt, 2=NMEA0183 Batt, 3=Victron Batt
+int timeAxisModeChanging = 0;  // toggle the time axis on and off in Plots.  Off = less janky but less info
 // In lieu of a table for RPM based charging....
 int RPM1 = 0;
 int RPM2 = 500;
@@ -502,7 +506,11 @@ int Amps6 = 50;
 int Amps7 = 30;
 int RPMThreshold = -20000;  //below this, there will be no field output in auto mode (Update this if we have RPM at low speeds and no field, otherwise, depend on Ignition)
 
-int maxPoints;  //number of points plotted per plot (X axis length)
+int maxPoints;                //number of points plotted per plot (X axis length)
+int Ymin1 = 3, Ymax1 = 5;     // Current plot
+int Ymin2 = 10, Ymax2 = 15;   // Voltage plot
+int Ymin3 = 0, Ymax3 = 4000;  // RPM plot
+int Ymin4 = 0, Ymax4 = 250;   // Temperature plot
 
 // Universal data freshness tracking
 // Complete DataIndex enum for all variables displayed in Live Data
@@ -540,7 +548,7 @@ enum DataIndex {
 };
 unsigned long dataTimestamps[MAX_DATA_INDICES];  // Uses the enum size automatically
 
-const unsigned long DATA_TIMEOUT = 5000;  // 10 seconds default timeout
+const unsigned long DATA_TIMEOUT = 10000;  // 10 seconds default timeout
 // Universal macros for clean syntax
 #define MARK_FRESH(index) dataTimestamps[index] = millis()
 #define IS_STALE(index) (millis() - dataTimestamps[index] > DATA_TIMEOUT)
@@ -571,8 +579,8 @@ VeDirectFrameHandler myve;
 // WIFI STUFF
 AsyncWebServer server(80);                  // Create AsyncWebServer object on port 80
 AsyncEventSource events("/events");         // Create an Event Source on /events
-unsigned long webgaugesinterval = 1000;     // delay in ms between sensor updates on webpage
-int plotTimeWindow = 120;      // Plot time window in seconds
+unsigned long webgaugesinterval = 50;       // delay in ms between sensor updates on webpage
+int plotTimeWindow = 10;                    // Plot time window in seconds
 unsigned long healthystuffinterval = 5000;  // check hardware health parameters only every 5 seconds, not that they consume much
 
 // WiFi provisioning settings
@@ -703,29 +711,23 @@ Reconnect to your selected network to access the full user interface.
 )rawliteral";
 
 void setup() {
-  // Essential hardware setup first
   Serial.begin(115200);
-  captureResetReason();
-  // Capture previous session data before starting new session
-  unsigned long previousSessionDuration = (millis() - sessionStartTime) / 60000;
-
-if (sessionStartTime > 0) {  // Only if there was a previous session
-    unsigned long previousSessionDuration = millis() / 60000;  // Total uptime in minutes
-    lastSessionDuration = previousSessionDuration;
-    lastSessionMaxLoopTime = MaximumLoopTime;
-    lastSessionMinHeap = sessionMinHeap;
-    lastSessionEndTime = millis() / 60000;
-    SaveAllData();    // Save immediately to persist
+  initializeNVS();
+  RestoreLastSessionValues();  // just used for ESP32 stats from last session
+  if (!ensureLittleFS()) {
+    Serial.println("CRITICAL: Cannot continue without filesystem");
+    while (true)
+      ;  // halt
   }
-  // Initialize current session variables
   sessionStartTime = millis();
-  wifiSessionStartTime = 0;                   // Will be set when WiFi connects
-  sessionMinHeap = 999999;                    // Will be updated with first heap reading
-  MaximumLoopTime = 0;
-  wifiReconnectsThisSession = 0;
-  // Increment power cycle counter
-  totalPowerCycles++;
-  SaveAllData();  // Save immediately to persist the power cycle count
+  captureResetReason();  // immediately capture the reason for last ESP32 shutdown and store in LittleFS and variable that won't be overwritten until next boot
+  loadNVSData();         // Load persistent variables from NVS- everything from last session is restored
+  //Reset some parameters to zero since we are re-starting on a re-boot
+  CurrentSessionDuration = 0;
+  MaxLoopTime = 0;
+  sessionMinHeap = 99999;
+  totalPowerCycles++;    // Increment power cycle counter
+  saveNVSData();  // Save immediately to persist the adjustments done above in setup so far
   setCpuFrequencyMhz(240);
   pinMode(4, OUTPUT);     // This pin is used to provide a high signal to Field Enable pin
   digitalWrite(4, LOW);   // Start with field off
@@ -735,25 +737,13 @@ if (sessionStartTime > 0) {  // Only if there was a previous session
   digitalWrite(33, LOW);  // Start with alarm off
   // PWM setup (needed for basic operation)
   ledcAttach(pwmPin, fffr, pwmResolution);
-  if (!ensureLittleFS()) {
-    Serial.println("CRITICAL: Cannot continue without filesystem");
-  }
-
-  InitPersistentVariables();  // load all persistent variables from LittleFS.  If no files exist, create them.
-  InitSystemSettings();       // load all settings from LittleFS.  If no files exist, create them.
+  InitSystemSettings();  // load all settings from LittleFS.  If no files exist, create them.
   loadPasswordHash();
   setupWiFi();  // NOW setup WiFi with all settings properly loaded
   esp_log_level_set("esp32-hal-i2c-ng", ESP_LOG_WARN);
   queueConsoleMessage("System starting up...");
   initializeHardware();  // Initialize hardware systems
-  esp_reset_reason_t reset_reason = esp_reset_reason();
-  if (reset_reason == ESP_RST_SW) {
-    queueConsoleMessage("System restarted - scheduled maintenance");
-  } else {
-    queueConsoleMessage("System started - reset reason: " + String(reset_reason));
-  }
   Serial.println("=== SETUP COMPLETE ===");
-
   // Enable watchdog - only after setup is complete
   Serial.println("Enabling watchdog protection...");
   // What Happens During Watchdog Reset:
@@ -783,6 +773,7 @@ void loop() {
 
   // SOC and runtime update every 2 seconds
   if (currentTime - lastSOCUpdateTime >= SOCUpdateInterval) {
+    CurrentSessionDuration = (millis() - sessionStartTime) / 1000/60; //minutes
     elapsedMillis = currentTime - lastSOCUpdateTime;
     lastSOCUpdateTime = currentTime;
     UpdateEngineRuntime(elapsedMillis);
@@ -790,10 +781,10 @@ void loop() {
     handleSocGainReset();  // do the dynamic updates
     handleAltZeroReset();  // do the dynamic udpates
   }
-  // Periodic Data Save Logic - run every DataSaveInterval
-  if (currentTime - lastDataSaveTime >= DataSaveInterval) {  // have to figure out an appropriate rate for this to not wear out Flash memory
+  // Periodic Data Save Logic - save NVS data every 10 seconds
+  if (currentTime - lastDataSaveTime >= 10000) {  // 10 seconds - NVS can handle frequent writes
     lastDataSaveTime = currentTime;
-    SaveAllData();
+    saveNVSData();  // Only save current operational data, not session stats
   }
   // New three-way mode handling
   OperationalMode mode = getCurrentMode();
@@ -897,12 +888,20 @@ void loop() {
     Serial.println(LoopTime);
     queueConsoleMessage("WARNING: Loop took " + String(LoopTime / 1000) + "ms - potential watchdog risk");
   }
-
+//This one resets every 5 seconds (AinputTrackerTime) and is displayed on client
   if (LoopTime > MaximumLoopTime) {
     MaximumLoopTime = LoopTime;
   }
+//This one is persistent, not displayed in current session for Client, but visible on next boot
+    if (LoopTime > MaxLoopTime) {
+    MaxLoopTime = LoopTime;            
+  }
+
+  
   checkAndRestart();  // Handle scheduled maintenance restarts
 }
+
+
 
 template<typename T> void PrintLabelValWithConversionCheckUnDef(const char *label, T val, double (*ConvFunc)(double val) = 0, bool AddLf = false, int8_t Desim = -1) {
   OutputStream->print(label);
