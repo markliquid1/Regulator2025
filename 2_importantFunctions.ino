@@ -153,7 +153,7 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
   if (!LittleFS.exists("/TailCurrent.txt")) {
     writeFile(LittleFS, "/TailCurrent.txt", String(TailCurrent).c_str());
   } else {
-    TailCurrent = readFile(LittleFS, "/TailCurrent.txt").toInt();
+    TailCurrent = readFile(LittleFS, "/TailCurrent.txt").toFloat();
   }
 
   if (!LittleFS.exists("/FuelEfficiency.txt")) {
@@ -275,9 +275,9 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
 
   //New May 17
   if (!LittleFS.exists("/CurrentThreshold.txt")) {
-    writeFile(LittleFS, "/CurrentThreshold.txt", String(CurrentThreshold_scaled).c_str());
+    writeFile(LittleFS, "/CurrentThreshold.txt", String(CurrentThreshold).c_str());
   } else {
-    CurrentThreshold_scaled = readFile(LittleFS, "/CurrentThreshold.txt").toInt();
+    CurrentThreshold = readFile(LittleFS, "/CurrentThreshold.txt").toFloat();
   }
   if (!LittleFS.exists("/PeukertExponent.txt")) {
     writeFile(LittleFS, "/PeukertExponent.txt", String(PeukertExponent_scaled).c_str());
@@ -297,7 +297,7 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
   if (!LittleFS.exists("/TailCurrent.txt")) {
     writeFile(LittleFS, "/TailCurrent.txt", String(TailCurrent).c_str());
   } else {
-    TailCurrent = readFile(LittleFS, "/TailCurrent.txt").toInt();
+    TailCurrent = readFile(LittleFS, "/TailCurrent.txt").toFloat();
   }
   if (!LittleFS.exists("/ChargedDetectionTime.txt")) {
     writeFile(LittleFS, "/ChargedDetectionTime.txt", String(ChargedDetectionTime).c_str());
@@ -309,15 +309,15 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
   } else {
     IgnoreTemperature = readFile(LittleFS, "/IgnoreTemperature.txt").toInt();
   }
-  if (!LittleFS.exists("/BMSLogic.txt")) {
-    writeFile(LittleFS, "/BMSLogic.txt", String(BMSlogic).c_str());
+  if (!LittleFS.exists("/bmsLogic.txt")) {
+    writeFile(LittleFS, "/bmsLogic.txt", String(bmsLogic).c_str());
   } else {
-    BMSlogic = readFile(LittleFS, "/BMSLogic.txt").toInt();
+    bmsLogic = readFile(LittleFS, "/bmsLogic.txt").toInt();
   }
-  if (!LittleFS.exists("/BMSLogicLevelOff.txt")) {
-    writeFile(LittleFS, "/BMSLogicLevelOff.txt", String(BMSLogicLevelOff).c_str());
+  if (!LittleFS.exists("/bmsLogicLevelOff.txt")) {
+    writeFile(LittleFS, "/bmsLogicLevelOff.txt", String(bmsLogicLevelOff).c_str());
   } else {
-    BMSLogicLevelOff = readFile(LittleFS, "/BMSLogicLevelOff.txt").toInt();
+    bmsLogicLevelOff = readFile(LittleFS, "/bmsLogicLevelOff.txt").toInt();
   }
   if (!LittleFS.exists("/AlarmActivate.txt")) {
     writeFile(LittleFS, "/AlarmActivate.txt", String(AlarmActivate).c_str());
@@ -514,6 +514,57 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
   } else {
     maxPoints = readFile(LittleFS, "/maxPoints.txt").toInt();
   }
+  if (!LittleFS.exists("/Ymin1.txt")) {
+    writeFile(LittleFS, "/Ymin1.txt", String(Ymin1).c_str());
+  } else {
+    Ymin1 = readFile(LittleFS, "/Ymin1.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymax1.txt")) {
+    writeFile(LittleFS, "/Ymax1.txt", String(Ymax1).c_str());
+  } else {
+    Ymax1 = readFile(LittleFS, "/Ymax1.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymin2.txt")) {
+    writeFile(LittleFS, "/Ymin2.txt", String(Ymin2).c_str());
+  } else {
+    Ymin2 = readFile(LittleFS, "/Ymin2.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymax2.txt")) {
+    writeFile(LittleFS, "/Ymax2.txt", String(Ymax2).c_str());
+  } else {
+    Ymax2 = readFile(LittleFS, "/Ymax2.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymin3.txt")) {
+    writeFile(LittleFS, "/Ymin3.txt", String(Ymin3).c_str());
+  } else {
+    Ymin3 = readFile(LittleFS, "/Ymin3.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymax3.txt")) {
+    writeFile(LittleFS, "/Ymax3.txt", String(Ymax3).c_str());
+  } else {
+    Ymax3 = readFile(LittleFS, "/Ymax3.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymin4.txt")) {
+    writeFile(LittleFS, "/Ymin4.txt", String(Ymin4).c_str());
+  } else {
+    Ymin4 = readFile(LittleFS, "/Ymin4.txt").toInt();
+  }
+
+  if (!LittleFS.exists("/Ymax4.txt")) {
+    writeFile(LittleFS, "/Ymax4.txt", String(Ymax4).c_str());
+  } else {
+    Ymax4 = readFile(LittleFS, "/Ymax4.txt").toInt();
+  }
+
+
+
+
   if (!LittleFS.exists("/MaxDuty.txt")) {
     writeFile(LittleFS, "/MaxDuty.txt", String(MaxDuty).c_str());
   } else {
@@ -607,94 +658,28 @@ void InitSystemSettings() {  // load all settings from LittleFS.  If no files ex
   } else {
     BatteryCurrentSource = readFile(LittleFS, "/BatteryCurrentSource.txt").toInt();
   }
-  if (!LittleFS.exists("/InvertBatteryMonitorAmps.txt")) {
-    writeFile(LittleFS, "/InvertBatteryMonitorAmps.txt", String(InvertBatteryMonitorAmps).c_str());
+
+  if (!LittleFS.exists("/timeAxisModeChanging.txt")) {
+    writeFile(LittleFS, "/timeAxisModeChanging.txt", String(timeAxisModeChanging).c_str());
   } else {
-    InvertBatteryMonitorAmps = readFile(LittleFS, "/InvertBatteryMonitorAmps.txt").toInt();
+    timeAxisModeChanging = readFile(LittleFS, "/timeAxisModeChanging.txt").toInt();
   }
+
+
   // Update webgaugesinterval to be user-configurable
   if (!LittleFS.exists("/webgaugesinterval.txt")) {
     writeFile(LittleFS, "/webgaugesinterval.txt", String(webgaugesinterval).c_str());
   } else {
     webgaugesinterval = readFile(LittleFS, "/webgaugesinterval.txt").toInt();
-    webgaugesinterval = constrain(webgaugesinterval, 100, 10000);  // 100ms to 10s
+    webgaugesinterval = constrain(webgaugesinterval, 1, 10000000);
   }
 
   if (!LittleFS.exists("/plotTimeWindow.txt")) {
     writeFile(LittleFS, "/plotTimeWindow.txt", String(plotTimeWindow).c_str());
   } else {
     plotTimeWindow = readFile(LittleFS, "/plotTimeWindow.txt").toInt();
-    plotTimeWindow = constrain(plotTimeWindow, 10, 600);  // 10s to 10min
+    plotTimeWindow = constrain(plotTimeWindow, 1, 1000000);  // 10s to 10min
   }
-}
-
-void InitPersistentVariables() {
-  String dataString = readFile(LittleFS, "/alldata.txt");
-
-
-  if (dataString.length() == 0) {
-    queueConsoleMessage("No persistent data file found, using defaults");
-    SaveAllData();
-    return;
-  }
-
-  // Convert String to char array once
-  static char dataBuffer[2048];
-  strncpy(dataBuffer, dataString.c_str(), sizeof(dataBuffer) - 1);
-  dataBuffer[sizeof(dataBuffer) - 1] = '\0';
-
-  // Static arrays to hold parsed values
-  static float floatVals[10];
-  static int intVals[15];
-  static unsigned long ulongVals[5];
-  static char resetReasonBuf[64];
-  static char wifiResetReasonBuf[64];
-  static char *stringVals[2] = { resetReasonBuf, wifiResetReasonBuf };
-
-  // Parse all data in one call
-  parseCSVData(dataBuffer, floatVals, intVals, ulongVals, stringVals);
-
-  // Assign to global variables
-  AlternatorChargedEnergy = intVals[0];
-  AlternatorFuelUsed = intVals[1];
-  IBVMax = floatVals[0];
-  MeasuredAmpsMax = floatVals[1];
-  RPMMax = intVals[2];
-  SoC_percent = intVals[3];
-  EngineRunTime = intVals[4];
-  EngineCycles = intVals[5];
-  AlternatorOnTime = intVals[6];
-  ChargedEnergy = ulongVals[3];
-  DischargedEnergy = ulongVals[4];
-  MaxAlternatorTemperatureF = floatVals[2];
-  MaxTemperatureThermistor = intVals[9];
-
-  lastSessionDuration = ulongVals[0];
-  lastSessionMaxLoopTime = intVals[10];
-  lastSessionMinHeap = intVals[11];
-  wifiReconnectsTotal = intVals[12];
-
-  lastResetReason = String(stringVals[0]);
-  lastWifiResetReason = String(stringVals[1]);
-
-  CumulativeInsulationDamage = floatVals[3];
-  CumulativeGreaseDamage = floatVals[4];
-  CumulativeBrushDamage = floatVals[5];
-
-  DynamicShuntGainFactor = floatVals[6];
-  DynamicAltCurrentZero = floatVals[7];
-  lastGainCorrectionTime = ulongVals[1];
-  lastAutoZeroTime = ulongVals[2];
-  lastAutoZeroTemp = floatVals[8];
-  totalPowerCycles = intVals[13];  //
-  lastWifiSessionDuration = ulongVals[3];
-
-    BatteryCurrentSource = intVals[14];
-  InvertBatteryMonitorAmps = intVals[15];
-  webgaugesinterval = intVals[16];
-  plotTimeWindow = intVals[17];
-
-  queueConsoleMessage("Persistent variables loaded from combined data file");
 }
 
 void ReadAnalogInputs() {
@@ -715,16 +700,14 @@ void ReadAnalogInputs() {
         if (!isnan(IBV) && IBV > 5.0 && IBV < 70.0 && !isnan(ShuntVoltage_mV)) {
           Bcur = ShuntVoltage_mV * 1000.0f / ShuntResistanceMicroOhm;
           Bcur = Bcur + BatteryCOffset;
+          // Apply inversioin if needed
+          if (InvertBattAmps == 1) {
+            Bcur = -Bcur;
+          }
           // Apply dynamic gain correction only when enabled AND using INA228 shunt
           if (AutoShuntGainCorrection == 1 && AmpSrc == 1) {
             Bcur = Bcur * DynamicShuntGainFactor;
           }
-          // Apply field control inversion if needed (for AmpSrc selection)
-          float BcurForField = Bcur;
-          if (InvertBattAmps == 1 && AmpSrc == 1) {  // Only invert for field control when using battery shunt
-            BcurForField = -BcurForField;
-          }
-          // Note: Battery monitoring inversion is handled in getBatteryCurrent()
           BatteryCurrent_scaled = Bcur * 100;  // Store raw value for battery monitoring
           // Only mark fresh on successful, valid readings
           MARK_FRESH(IDX_IBV);
@@ -836,19 +819,7 @@ void ReadAnalogInputs() {
       }
       break;
   }
-
-  calculateChargeTimes();  // calculate charge/discharge times
-
-  // Lazy check and update of maximum values, clean this up later if desired
-  if (!isnan(IBV) && IBV > IBVMax) IBVMax = IBV;
-  if (MeasuredAmps > MeasuredAmpsMax) MeasuredAmpsMax = MeasuredAmps;
-  if (RPM > RPMMax) RPMMax = RPM;
-  if (!isnan(MaxAlternatorTemperatureF) && AlternatorTemperatureF > MaxAlternatorTemperatureF) MaxAlternatorTemperatureF = AlternatorTemperatureF;
-  if (!isnan(MaxTemperatureThermistor) && temperatureThermistor > MaxTemperatureThermistor) {
-    MaxTemperatureThermistor = temperatureThermistor;
-  }
 }
-
 
 void ReadVEData() {
   if (VeData == 1) {
@@ -937,6 +908,15 @@ void AdjustField() {  // Function 6: AdjustField() - PWM Field Control with Fres
 
   if (millis() - prev_millis22 > FieldAdjustmentInterval) {  // adjust field every FieldAdjustmentInterval milliseconds
                                                              //Block any field control/changes during auto-zero of current sensor
+    // Check temperature data freshness for safety
+    unsigned long tempAge = millis() - dataTimestamps[IDX_ALTERNATOR_TEMP];
+    bool tempDataVeryStale = (tempAge > 30000);  // 30 seconds
+    if (tempDataVeryStale) {
+      Serial.println("Onewire sensor stale, sensor dead or disconnected");
+      queueConsoleMessage("OneWire sensor stale, sensor dead or disconnected");
+      digitalWrite(33, HIGH);  // sound alarm
+    }
+
     if (autoZeroStartTime > 0) {
       prev_millis22 = millis();
       return;  // Let processAutoZero() handle field control
@@ -967,11 +947,12 @@ void AdjustField() {  // Function 6: AdjustField() - PWM Field Control with Fres
     }
     // Check if charging should be enabled (ignition on, system enabled, BMS allows)
     chargingEnabled = (Ignition == 1 && OnOff == 1);
+
     // Check BMS override if BMS logic is enabled--- this is a manual human setting in the user interface
-    if (BMSlogic == 1) {
-      // If BMS signal is active (based on BMSLogicLevelOff setting)
+    if (bmsLogic == 1) {
+      // If BMS signal is active (based on bmsLogicLevelOff setting)
       bmsSignalActive = !digitalRead(36);  // this is the signal from the BMS itself (need "!"" because of optocouplers)
-      if (BMSLogicLevelOff == 0) {
+      if (bmsLogicLevelOff == 0) {
         // BMS gives LOW signal when charging NOT desired
         chargingEnabled = chargingEnabled && bmsSignalActive;
       } else {
@@ -1062,11 +1043,11 @@ void AdjustField() {  // Function 6: AdjustField() - PWM Field Control with Fres
       // Charging disabled: shut down field and reset for next enable
       digitalWrite(4, 0);  // Disable the Field (FieldEnable)
       dutyCycle = MinDuty;
-      uTargetAmps = -888;  // just useful for debugging, delete later
+      uTargetAmps = -999;  // just useful for debugging, delete later
     }
     // Apply the calculated duty cycle
     setDutyPercent((int)dutyCycle);
-    DutyCycle = dutyCycle;                            //shoddy work, oh well
+    dutyCycle = dutyCycle;                            //shoddy work, oh well
     vvout = dutyCycle / 100 * currentBatteryVoltage;  //
     iiout = vvout / FieldResistance;
 
@@ -1077,29 +1058,30 @@ void AdjustField() {  // Function 6: AdjustField() - PWM Field Control with Fres
 
     // Update timer (only once)
     prev_millis22 = millis();
-    /// delete this whole thing later
-    static unsigned long lastRunTime2g = 0;
-    const unsigned long interval2g = 10000;  // 10 seconds
 
-    if (millis() - lastRunTime2g >= interval2g) {
-      lastRunTime2g = millis();
+    // /// delete this whole thing later
+    // static unsigned long lastRunTime2g = 0;
+    // const unsigned long interval2g = 10000;  // 10 seconds
 
-      if (dutyCycle <= (MinDuty + 1.0)) {
-        //Serial.println();
-        // String msg = " utargetAmps=" + String((float)uTargetAmps, 1)
-        //           + " targetCurrent=" + String(targetCurrent, 1)
-        //           + " currentBatteryVoltage=" + String(currentBatteryVoltage, 2) + "V"
-        //           + " TempToUse=" + String((float)TempToUse, 1) + "F"
-        //          + " dutyCycle=" + String(dutyCycle, 1);
-        //  queueConsoleMessage(msg);      GREAT DEBUG TOOL ADD BACK IN LATER
-      }
-    }
+    // if (millis() - lastRunTime2g >= interval2g) {
+    //   lastRunTime2g = millis();
+
+    //   if (dutyCycle <= (MinDuty + 1.0)) {
+    //     //Serial.println();
+    //     // String msg = " utargetAmps=" + String((float)uTargetAmps, 1)
+    //     //           + " targetCurrent=" + String(targetCurrent, 1)
+    //     //           + " currentBatteryVoltage=" + String(currentBatteryVoltage, 2) + "V"
+    //     //           + " TempToUse=" + String((float)TempToUse, 1) + "F"
+    //     //          + " dutyCycle=" + String(dutyCycle, 1);
+    //     //  queueConsoleMessage(msg);      GREAT DEBUG TOOL ADD BACK IN LATER
+    //   }
+    // }
     fieldActiveStatus = (
                           // Basic enables
                           (Ignition == 1) && (OnOff == 1) &&
 
                           // BMS logic (if enabled)
-                          (BMSlogic == 0 || (BMSLogicLevelOff == 0 ? bmsSignalActive : !bmsSignalActive)) &&
+                          (bmsLogic == 0 || (bmsLogicLevelOff == 0 ? bmsSignalActive : !bmsSignalActive)) &&
 
                           // Not in emergency field collapse
                           (fieldCollapseTime == 0 || (millis() - fieldCollapseTime) >= FIELD_COLLAPSE_DELAY) &&
@@ -1121,33 +1103,22 @@ void setDutyPercent(int percent) {  // Function to set PWM duty cycle by percent
 bool setupDisplay() {
   // Add delay for ESP32 stabilization
   delay(100);
-
   try {
-    // Initialize SPI carefully
+    // Initialize SPI 
     SPI.begin();
     delay(50);                  // Let SPI settle
     SPI.setFrequency(1000000);  // Start slow for stability
     SPI.setDataMode(SPI_MODE0);
     SPI.setBitOrder(MSBFIRST);
-
-    // Test if SPI is working by trying a simple transaction
     SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     SPI.endTransaction();
-
-    // Initialize U8g2 with error checking
     u8g2.begin();
-
-    // Test if display is responding
     u8g2.clearBuffer();
     u8g2.sendBuffer();
-
-    // If we get here without crashing, it's working
     displayAvailable = true;
     Serial.println("Display initialized successfully");
     queueConsoleMessage("Display initialized successfully");
-
     return true;
-
   } catch (...) {
     Serial.println("Display initialization failed - exception caught");
     queueConsoleMessage("Display initialization failed - exception caught");
@@ -1171,32 +1142,25 @@ void UpdateDisplay() {
       if (millis() - displayStart > 2000) {
         Serial.println("Display timeout - disabling display");
         queueConsoleMessage("Display timeout - disabling display");
-
         displayAvailable = false;
         prev_millis66 = millis();
         return;
       }
-
       u8g2.setFont(u8g2_font_6x10_tf);
-
       // Row 1 (y=10)
       u8g2.drawStr(0, 10, "Vlts:");
       u8g2.setCursor(35, 10);
       u8g2.print(BatteryV, 2);
-
       u8g2.drawStr(79, 10, "R:");
       u8g2.setCursor(90, 10);
       u8g2.print(RPM, 0);
-
       // Row 2 (y=20)
       u8g2.drawStr(0, 20, "Acur:");
       u8g2.setCursor(35, 20);
       u8g2.print(MeasuredAmps, 1);
-
       u8g2.drawStr(79, 20, "VV:");
       u8g2.setCursor(90, 20);
       u8g2.print(VictronVoltage, 2);
-
       // Check timeout partway through
       if (millis() - displayStart > 2000) {
         Serial.println("Display timeout during updates - disabling display");
@@ -1205,53 +1169,42 @@ void UpdateDisplay() {
         prev_millis66 = millis();
         return;
       }
-
       // Row 3 (y=30)
       u8g2.drawStr(0, 30, "Temp:");
       u8g2.setCursor(35, 30);
       u8g2.print(AlternatorTemperatureF, 1);
-
       u8g2.drawStr(79, 30, "t:");
       u8g2.setCursor(90, 30);
       u8g2.print("extra");
-
       // Row 4 (y=40)
       u8g2.drawStr(0, 40, "PWM%:");
       u8g2.setCursor(35, 40);
-      u8g2.print(DutyCycle, 1);
-
+      u8g2.print(dutyCycle, 1);
       u8g2.drawStr(79, 40, "H:");
       u8g2.setCursor(90, 40);
       u8g2.print(HeadingNMEA);
-
       // Row 5 (y=50)
       u8g2.drawStr(0, 50, "Vout:");
       u8g2.setCursor(35, 50);
       u8g2.print(vvout, 2);
-
       // Row 6 (y=60)
       u8g2.drawStr(0, 60, "Bcur:");
       u8g2.setCursor(35, 60);
       u8g2.print(Bcur, 1);
-
       // Final timeout check before sendBuffer()
       if (millis() - displayStart > 2000) {
         Serial.println("Display timeout before sendBuffer - disabling display");
         queueConsoleMessage("Display timeout before sendBuffer - disabling display");
-
         displayAvailable = false;
         prev_millis66 = millis();
         return;
       }
-
       u8g2.sendBuffer();
-
       // Log if display operations took a long time
       unsigned long totalTime = millis() - displayStart;
       if (totalTime > 1000) {
         Serial.println("Display took: " + String(totalTime) + "ms");
       }
-
       prev_millis66 = millis();
     }
   } catch (...) {
@@ -1324,23 +1277,6 @@ int SafeInt(float f, int scale = 1) {
   return isnan(f) || isinf(f) ? -1 : (int)(f * scale);
 }
 
-int encodeResetReason(String reason) {  //cpu health      //encoding for health checks
-
-  if (reason == "Software reset (controlled)") return 1;
-  if (reason == "Woke from deep sleep") return 2;
-  if (reason == "External reset (button)") return 3;
-  if (reason == "Watchdog reset (code hung)") return 4;
-  if (reason == "Panic/Exception reset (crash)") return 5;
-  if (reason == "Brownout reset (power issue)") return 6;
-  if (reason == "Scheduled maintenance restart") return 7;
-  return 0;  // Unknown
-}
-int encodeWifiResetReason(String reason) {  //wifi health      //encoding for health checks
-  if (reason.indexOf("signal lost") >= 0) return 1;
-  if (reason.indexOf("password") >= 0) return 2;
-  if (reason.indexOf("connect") >= 0) return 3;
-  return 0;  // Unknown
-}
 void printBasicTaskStackInfo() {
   numTasks = uxTaskGetNumberOfTasks();
   if (numTasks > MAX_TASKS) numTasks = MAX_TASKS;  // Prevent overflow
@@ -1512,9 +1448,6 @@ void checkAndRestart() {
   }
   // Check if it's time to restart
   if (currentMillis - lastRestartTime >= RESTART_INTERVAL) {
-    // Store a flag indicating this is a scheduled restart
-    writeFile(LittleFS, "/scheduledRestart.txt", "1");
-
     events.send("Performing scheduled restart for system maintenance", "console");
     events.send("Device restarting for maintenance. Will reconnect shortly.", "status");
     delay(2500);
@@ -1522,46 +1455,27 @@ void checkAndRestart() {
   }
 }
 void captureResetReason() {
-  // First, load and preserve the previous reset reason
-  String previousResetReason = readFile(LittleFS, "/lastResetReason.txt");
-  if (previousResetReason.length() > 0) {
-    // Save the previous reason to a different file
-    writeFile(LittleFS, "/previousResetReason.txt", previousResetReason.c_str());
+  // Load the last session's reset reason (reason for closing down 2 sessions ago)
+  ancientResetReason = readFile(LittleFS, "/LastResetReason.txt").toInt();
+  // Read raw hardware reset reason as integer (this is why it closed last session)
+  int rawReason = (int)esp_reset_reason();
+  // Convert raw ESP32 code to compact application-specific code
+  switch (rawReason) {
+    case ESP_RST_SW: LastResetReason = 1; break;
+    case ESP_RST_DEEPSLEEP: LastResetReason = 2; break;
+    case ESP_RST_EXT: LastResetReason = 3; break;
+    case ESP_RST_TASK_WDT: LastResetReason = 4; break;
+    case ESP_RST_PANIC: LastResetReason = 5; break;
+    case ESP_RST_BROWNOUT: LastResetReason = 6; break;
+    default: LastResetReason = 8; break;
   }
-
-  esp_reset_reason_t reset_reason = esp_reset_reason();
-
-  // Check if this was a scheduled restart
-  if (reset_reason == ESP_RST_SW && LittleFS.exists("/scheduledRestart.txt")) {
-    lastResetReason = "Scheduled maintenance restart";
-    LittleFS.remove("/scheduledRestart.txt");  // Clean up flag
-  } else {
-    switch (reset_reason) {
-      case ESP_RST_SW:
-        lastResetReason = "Software reset (controlled)";
-        break;
-      case ESP_RST_DEEPSLEEP:
-        lastResetReason = "Woke from deep sleep";
-        break;
-      case ESP_RST_EXT:
-        lastResetReason = "External reset (button)";
-        break;
-      case ESP_RST_TASK_WDT:
-        lastResetReason = "Watchdog reset (code hung)";
-        break;
-      case ESP_RST_PANIC:
-        lastResetReason = "Panic/Exception reset (crash)";
-        break;
-      case ESP_RST_BROWNOUT:
-        lastResetReason = "Brownout reset (power issue)";
-        break;
-      default:
-        lastResetReason = "Other reset (" + String(reset_reason) + ")";
-        break;
-    }
-  }
-  writeFile(LittleFS, "/lastResetReason.txt", lastResetReason.c_str());
+  // Save most recent reset reason to file for restoration next session
+  writeFile(LittleFS, "/LastResetReason.txt", String(LastResetReason).c_str());
 }
+
+
+
+
 bool checkFactoryReset() {
   pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
   delay(100);  // Let pin settle
@@ -1741,8 +1655,8 @@ bool connectToWiFi(const char *ssid, const char *password, unsigned long timeout
     Serial.println("WiFi connection successful!");                         // PRESERVES: Your success message
     Serial.printf("IP address: %s\n", WiFi.localIP().toString().c_str());  // PRESERVES: Your IP logging
     Serial.printf("Signal strength: %d dBm\n", WiFi.RSSI());               // PRESERVES: Your signal logging
-
-    // PRESERVES: Your mDNS setup
+    wifiSessionStartTime = millis();
+    // mDNS setup
     if (MDNS.begin("alternator")) {
       Serial.println("mDNS responder started");  //
       MDNS.addService("http", "tcp", 80);
@@ -2008,15 +1922,12 @@ void setupServer() {
       request->send(400, "text/plain", "Missing password");
       return;
     }
-
     String password = request->getParam("password", true)->value();
     if (!validatePassword(password.c_str())) {
       request->send(403, "text/plain", "FAIL");
       return;
     }
-
     queueConsoleMessage("FACTORY RESET: Restoring all defaults...");
-
     // Delete ALL settings files - let InitSystemSettings() recreate with defaults
     const char *settingsFiles[] = {
       "/AlternatorTemperatureLimitF.txt",
@@ -2048,8 +1959,8 @@ void setupServer() {
       "/TailCurrent.txt",
       "/ChargedDetectionTime.txt",
       "/IgnoreTemperature.txt",
-      "/BMSLogic.txt",
-      "/BMSLogicLevelOff.txt",
+      "/bmsLogic.txt",
+      "/bmsLogicLevelOff.txt",
       "/AlarmActivate.txt",
       "/TempAlarm.txt",
       "/VoltageAlarmHigh.txt",
@@ -2093,6 +2004,14 @@ void setupServer() {
       "/Amps7.txt",
       "/ShuntResistanceMicroOhm.txt",
       "/maxPoints.txt",
+      "/Ymin1.txt",
+      "/Ymax1.txt",
+      "/Ymin2.txt",
+      "/Ymax2.txt",
+      "/Ymin3.txt",
+      "/Ymax3.txt",
+      "/Ymin4.txt",
+      "/Ymax4.txt",
       "/MaxDuty.txt",
       "/MinDuty.txt",
       "/MaxTemperatureThermistor.txt",
@@ -2102,12 +2021,12 @@ void setupServer() {
       "/PulleyRatio.txt",
       "/BatteryCapacity_Ah.txt",
       "/ManualLifePercentage.txt",
-
+      "/timeAxisModeChanging",
       // Persistent Variables (InitPersistentVariables)
       "/IBVMax.txt",
       "/MeasuredAmpsMax.txt",
       "/RPMMax.txt",
-      "/SoC_percent.txt",
+      "/SOC_percent.txt",
       "/EngineRunTime.txt",
       "/EngineCycles.txt",
       "/AlternatorOnTime.txt",
@@ -2124,19 +2043,17 @@ void setupServer() {
       "/CumulativeInsulationDamage.txt",
       "/CumulativeGreaseDamage.txt",
       "/CumulativeBrushDamage.txt",
-      "/lastSessionDuration.txt",
-      "/lastSessionMaxLoopTime.txt",
+      "/LastSessionDuration.txt",
+      "/LastSessionMaxLoopTime.txt",
       "/lastSessionMinHeap.txt",
       "/wifiReconnectsTotal.txt",
-      "/lastResetReason.txt",
-      "/lastWifiResetReason.txt",
-
+      "/LastResetReason.txt",
+      "/ancientResetReason.txt",
       // Other files created in SaveAllData and various functions
       "/BatteryCapacity.txt",
       "/FuelEfficiency.txt",
       "/AltEnergy.txt",
       "/FuelUsed.txt",
-
       // WiFi and System files
       "/ssid.txt",
       "/pass.txt",
@@ -2146,17 +2063,23 @@ void setupServer() {
       "/appass.txt",
       "/scheduledRestart.txt"
     };
-
     // Delete all settings files
     for (int i = 0; i < sizeof(settingsFiles) / sizeof(settingsFiles[0]); i++) {
       if (LittleFS.exists(settingsFiles[i])) {
         LittleFS.remove(settingsFiles[i]);
       }
     }
-
+    // Clear NVS data
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+      nvs_erase_all(nvs_handle);
+      nvs_commit(nvs_handle);
+      nvs_close(nvs_handle);
+      queueConsoleMessage("FACTORY RESET: NVS data cleared");
+    }
     // Reinitialize with defaults
     InitSystemSettings();
-
     queueConsoleMessage("FACTORY RESET: Complete! All settings restored to defaults.");
     request->send(200, "text/plain", "OK");
   });
@@ -2310,7 +2233,7 @@ void setupServer() {
         foundParameter = true;
         inputMessage = request->getParam("CurrentThreshold")->value();
         writeFile(LittleFS, "/CurrentThreshold.txt", inputMessage.c_str());
-        CurrentThreshold_scaled = (int)(inputMessage.toFloat() * 100);
+        CurrentThreshold = inputMessage.toFloat();
       } else if (request->hasParam("PeukertExponent")) {
         foundParameter = true;
         inputMessage = request->getParam("PeukertExponent")->value();
@@ -2330,7 +2253,7 @@ void setupServer() {
         foundParameter = true;
         inputMessage = request->getParam("TailCurrent")->value();
         writeFile(LittleFS, "/TailCurrent.txt", inputMessage.c_str());
-        TailCurrent = inputMessage.toInt();
+        TailCurrent = inputMessage.toFloat();
       } else if (request->hasParam("ChargedDetectionTime")) {
         foundParameter = true;
         inputMessage = request->getParam("ChargedDetectionTime")->value();
@@ -2341,16 +2264,16 @@ void setupServer() {
         inputMessage = request->getParam("IgnoreTemperature")->value();
         writeFile(LittleFS, "/IgnoreTemperature.txt", inputMessage.c_str());
         IgnoreTemperature = inputMessage.toInt();
-      } else if (request->hasParam("BMSLogic")) {
+      } else if (request->hasParam("bmsLogic")) {
         foundParameter = true;
-        inputMessage = request->getParam("BMSLogic")->value();
-        writeFile(LittleFS, "/BMSLogic.txt", inputMessage.c_str());
-        BMSlogic = inputMessage.toInt();
-      } else if (request->hasParam("BMSLogicLevelOff")) {
+        inputMessage = request->getParam("bmsLogic")->value();
+        writeFile(LittleFS, "/bmsLogic.txt", inputMessage.c_str());
+        bmsLogic = inputMessage.toInt();
+      } else if (request->hasParam("bmsLogicLevelOff")) {
         foundParameter = true;
-        inputMessage = request->getParam("BMSLogicLevelOff")->value();
-        writeFile(LittleFS, "/BMSLogicLevelOff.txt", inputMessage.c_str());
-        BMSLogicLevelOff = inputMessage.toInt();
+        inputMessage = request->getParam("bmsLogicLevelOff")->value();
+        writeFile(LittleFS, "/bmsLogicLevelOff.txt", inputMessage.c_str());
+        bmsLogicLevelOff = inputMessage.toInt();
       } else if (request->hasParam("AlarmActivate")) {
         foundParameter = true;
         inputMessage = request->getParam("AlarmActivate")->value();
@@ -2439,21 +2362,18 @@ void setupServer() {
         writeFile(LittleFS, "/IgnitionOverride.txt", inputMessage.c_str());
         IgnitionOverride = inputMessage.toInt();
       }
-
       else if (request->hasParam("AlarmLatchEnabled")) {
         foundParameter = true;
         inputMessage = request->getParam("AlarmLatchEnabled")->value();
         writeFile(LittleFS, "/AlarmLatchEnabled.txt", inputMessage.c_str());
         AlarmLatchEnabled = inputMessage.toInt();
       }
-
       else if (request->hasParam("AlarmTest")) {
         foundParameter = true;
         AlarmTest = 1;  // Set the flag - don't save to file as it's momentary
         queueConsoleMessage("ALARM TEST: Initiated from web interface");
         inputMessage = "1";  // Return confirmation
       }
-
       else if (request->hasParam("ResetAlarmLatch")) {
         foundParameter = true;
         ResetAlarmLatch = 1;  // Set the flag - don't save to file as it's momentary
@@ -2505,38 +2425,31 @@ void setupServer() {
         queueConsoleMessage("Max Battery Current: Reset requested from web interface");
       } else if (request->hasParam("ResetEngineRunTime")) {
         foundParameter = true;
-        EngineRunTime = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/EngineRunTime.txt", "0");  // not pointless
+        EngineRunTime = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Engine Run Time: Reset requested from web interface");
       } else if (request->hasParam("ResetAlternatorOnTime")) {
         foundParameter = true;
-        AlternatorOnTime = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/AlternatorOnTime.txt", "0");  // not pointless
+        AlternatorOnTime = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Alternator On Time: Reset requested from web interface");
       } else if (request->hasParam("ResetEnergy")) {
         foundParameter = true;
-        ChargedEnergy = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/ChargedEnergy.txt", "0");  // not pointless
+        ChargedEnergy = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Battery Charged Energy: Reset requested from web interface");
       } else if (request->hasParam("ResetDischargedEnergy")) {
         foundParameter = true;
-        DischargedEnergy = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/DischargedEnergy.txt", "0");  // not pointless
+        DischargedEnergy = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Battery Discharged Energy: Reset requested from web interface");
       } else if (request->hasParam("ResetFuelUsed")) {
         foundParameter = true;
-        AlternatorFuelUsed = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/AlternatorFuelUsed.txt", "0");  // not pointless
+        AlternatorFuelUsed = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Fuel Used: Reset requested from web interface");
       } else if (request->hasParam("ResetAlternatorChargedEnergy")) {
         foundParameter = true;
-        AlternatorChargedEnergy = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/AlternatorChargedEnergy.txt", "0");  // not pointless
+        AlternatorChargedEnergy = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Alternator Charged Energy: Reset requested from web interface");
       } else if (request->hasParam("ResetEngineCycles")) {
         foundParameter = true;
-        EngineCycles = 0;                               // reset the variable on ESP32 mem
-        writeFile(LittleFS, "/EngineCycles.txt", "0");  // not pointless
+        EngineCycles = 0;  // reset the variable on ESP32 mem
         queueConsoleMessage("Engine Cycles: Reset requested from web interface");
       } else if (request->hasParam("ResetRPMMax")) {
         foundParameter = true;
@@ -2548,31 +2461,22 @@ void setupServer() {
         inputMessage = request->getParam("MaximumAllowedBatteryAmps")->value();
         writeFile(LittleFS, "/MaximumAllowedBatteryAmps.txt", inputMessage.c_str());
         MaximumAllowedBatteryAmps = inputMessage.toInt();
-      }
-
-      else if (request->hasParam("ManualSOCPoint")) {
+      } else if (request->hasParam("ManualSOCPoint")) {
         foundParameter = true;
         inputMessage = request->getParam("ManualSOCPoint")->value();
         writeFile(LittleFS, "/ManualSOCPoint.txt", inputMessage.c_str());
         ManualSOCPoint = inputMessage.toInt();
-        SoC_percent = ManualSOCPoint * 100;                                    // Convert to scaled format (SoC_percent is stored × 100)
-        CoulombCount_Ah_scaled = (ManualSOCPoint * BatteryCapacity_Ah);        // Update coulomb count to match
-        writeFile(LittleFS, "/SoC_percent.txt", String(SoC_percent).c_str());  // Save the updated SoC to persistent storage
+        SOC_percent = ManualSOCPoint * 100;                              // Convert to scaled format (SOC_percent is stored × 100)
+        CoulombCount_Ah_scaled = (ManualSOCPoint * BatteryCapacity_Ah);  // Update coulomb count to match
         queueConsoleMessage("SoC manually set to: " + String(ManualSOCPoint) + "%");
-      }
-
-
-
-      else if (request->hasParam("BatteryCapacity_Ah")) {
+      } else if (request->hasParam("BatteryCapacity_Ah")) {
         foundParameter = true;
         inputMessage = request->getParam("BatteryCapacity_Ah")->value();
         writeFile(LittleFS, "/BatteryCapacity_Ah.txt", inputMessage.c_str());
         BatteryCapacity_Ah = inputMessage.toInt();
         PeukertRatedCurrent_A = BatteryCapacity_Ah / 20.0f;  // Recalculate when capacity changes
         queueConsoleMessage("Battery capacity set to: " + inputMessage + " Ah");
-      }
-
-      else if (request->hasParam("AmpControlByRPM")) {
+      } else if (request->hasParam("AmpControlByRPM")) {
         foundParameter = true;
         inputMessage = request->getParam("AmpControlByRPM")->value();
         writeFile(LittleFS, "/AmpControlByRPM.txt", inputMessage.c_str());
@@ -2587,7 +2491,48 @@ void setupServer() {
         inputMessage = request->getParam("maxPoints")->value();
         writeFile(LittleFS, "/maxPoints.txt", inputMessage.c_str());
         maxPoints = inputMessage.toInt();
+      } else if (request->hasParam("Ymin1")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymin1")->value();
+        writeFile(LittleFS, "/Ymin1.txt", inputMessage.c_str());
+        Ymin1 = inputMessage.toInt();
+      } else if (request->hasParam("Ymax1")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymax1")->value();
+        writeFile(LittleFS, "/Ymax1.txt", inputMessage.c_str());
+        Ymax1 = inputMessage.toInt();
+      } else if (request->hasParam("Ymin2")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymin2")->value();
+        writeFile(LittleFS, "/Ymin2.txt", inputMessage.c_str());
+        Ymin2 = inputMessage.toInt();
+      } else if (request->hasParam("Ymax2")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymax2")->value();
+        writeFile(LittleFS, "/Ymax2.txt", inputMessage.c_str());
+        Ymax2 = inputMessage.toInt();
+      } else if (request->hasParam("Ymin3")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymin3")->value();
+        writeFile(LittleFS, "/Ymin3.txt", inputMessage.c_str());
+        Ymin3 = inputMessage.toInt();
+      } else if (request->hasParam("Ymax3")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymax3")->value();
+        writeFile(LittleFS, "/Ymax3.txt", inputMessage.c_str());
+        Ymax3 = inputMessage.toInt();
+      } else if (request->hasParam("Ymin4")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymin4")->value();
+        writeFile(LittleFS, "/Ymin4.txt", inputMessage.c_str());
+        Ymin4 = inputMessage.toInt();
+      } else if (request->hasParam("Ymax4")) {
+        foundParameter = true;
+        inputMessage = request->getParam("Ymax4")->value();
+        writeFile(LittleFS, "/Ymax4.txt", inputMessage.c_str());
+        Ymax4 = inputMessage.toInt();
       }
+
       // Dynamic gain corrections
       else if (request->hasParam("AutoShuntGainCorrection")) {  // boolean flag!
         foundParameter = true;
@@ -2635,16 +2580,54 @@ void setupServer() {
         writeFile(LittleFS, "/CumulativeGreaseDamage.txt", String(CumulativeGreaseDamage, 6).c_str());
         writeFile(LittleFS, "/CumulativeBrushDamage.txt", String(CumulativeBrushDamage, 6).c_str());
         queueConsoleMessage("Alternator life manually set to " + String(ManualLifePercentage) + "%");
-      } else if (request->hasParam("webgaugesinterval")) {
+      }
+
+      else if (request->hasParam("webgaugesinterval")) {
         foundParameter = true;
         inputMessage = request->getParam("webgaugesinterval")->value();
         int newInterval = inputMessage.toInt();
-        newInterval = constrain(newInterval, 100, 10000);
+        newInterval = constrain(newInterval, 1, 10000000);
         writeFile(LittleFS, "/webgaugesinterval.txt", String(newInterval).c_str());
         webgaugesinterval = newInterval;
         queueConsoleMessage("Update interval set to: " + String(newInterval) + "ms");
       }
 
+      else if (request->hasParam("BatteryCurrentSource")) {
+        foundParameter = true;
+        inputMessage = request->getParam("BatteryCurrentSource")->value();
+        writeFile(LittleFS, "/BatteryCurrentSource.txt", inputMessage.c_str());
+        BatteryCurrentSource = inputMessage.toInt();
+        queueConsoleMessage("Battery current source changed to: " + String(BatteryCurrentSource));  // Debug line
+      }
+
+      else if (request->hasParam("totalPowerCycles")) {
+        foundParameter = true;
+        inputMessage = request->getParam("totalPowerCycles")->value();
+        writeFile(LittleFS, "/totalPowerCycles.txt", inputMessage.c_str());
+        totalPowerCycles = inputMessage.toInt();
+      }
+
+      else if (request->hasParam("lastWifiSessionDuration")) {
+        foundParameter = true;
+        inputMessage = request->getParam("lastWifiSessionDuration")->value();
+        writeFile(LittleFS, "/lastWifiSessionDuration.txt", inputMessage.c_str());
+        lastWifiSessionDuration = inputMessage.toInt();
+      }
+
+      else if (request->hasParam("timeAxisModeChanging")) {
+        foundParameter = true;
+        inputMessage = request->getParam("timeAxisModeChanging")->value();
+        writeFile(LittleFS, "/timeAxisModeChanging.txt", inputMessage.c_str());
+        timeAxisModeChanging = inputMessage.toInt();
+        queueConsoleMessage("Time axis mode changed to: " + String(timeAxisModeChanging ? "UNIX timestamps" : "relative time"));
+      }
+
+      else if (request->hasParam("plotTimeWindow")) {
+        foundParameter = true;
+        inputMessage = request->getParam("plotTimeWindow")->value();
+        writeFile(LittleFS, "/plotTimeWindow.txt", inputMessage.c_str());
+        plotTimeWindow = inputMessage.toInt();
+      }
 
       // Handle RPM/AMPS table - use separate if statements, not else if, becuase we are sending more than 1 value at a time, unlike all the others!
       if (request->hasParam("RPM1")) {
@@ -2837,45 +2820,29 @@ void setupServer() {
 }
 
 void dnsHandleRequest() {  //process dns request for captive portals
-
   if (currentWiFiMode == AWIFI_MODE_AP) {
     dnsServer.processNextRequest();
   }
 }
+
+
 void checkWiFiConnection() {
   static unsigned long lastWiFiCheckTime = 0;
   static bool reconnecting = false;
   static int reconnectAttempts = 0;
   static unsigned long firstDisconnectTime = 0;
+  static wl_status_t lastWiFiStatus = WL_IDLE_STATUS;
+  static unsigned long throttle123 = 0;  // Throttle CurrentWifiSessionDuration update
 
   wl_status_t currentStatus = WiFi.status();
 
-  // Track disconnect reasons
-  static wl_status_t lastWiFiStatus = WL_CONNECTED;
   if (lastWiFiStatus == WL_CONNECTED && currentStatus != WL_CONNECTED) {
     // Just disconnected
+    Serial.println("we just disconnected wifi");
+    wifiSessionStartTime = 0;  // Reset WiFi session timer
     firstDisconnectTime = millis();
     reconnectAttempts = 0;
-
-    // Capture disconnect reason
-    switch (currentStatus) {
-      case WL_NO_SSID_AVAIL:
-        lastWifiResetReason = "WiFi signal lost - No router found";
-        break;
-      case WL_CONNECT_FAILED:
-        lastWifiResetReason = "Can't connect to WiFi - Connection failed";
-        break;
-      case WL_CONNECTION_LOST:
-        lastWifiResetReason = "WiFi signal lost - Connection dropped";
-        break;
-      default:
-        lastWifiResetReason = "WiFi disconnected - Status: " + String(currentStatus);
-        break;
-    }
-
-    wifiReconnectsThisSession++;
-    wifiReconnectsTotal++;
-    SaveAllData();  // Persist the counts
+    saveNVSData();  // Save the zerod out values
   }
   lastWiFiStatus = currentStatus;
 
@@ -2902,16 +2869,19 @@ void checkWiFiConnection() {
       reconnecting = true;
       reconnectAttempts++;
 
-      queueConsoleMessage("WiFi reconnect attempt #" + String(reconnectAttempts));
-
       String saved_ssid = readFile(LittleFS, WIFI_SSID_FILE);
       String saved_password = readFile(LittleFS, WIFI_PASS_FILE);
 
       if (connectToWiFi(saved_ssid.c_str(), saved_password.c_str(), 5000)) {  // 5 sec timeout
         wifiSessionStartTime = millis();
+        wifiReconnectsThisSession++;  // Increment reconnect counter
+        wifiReconnectsTotal++;
+        Serial.println("wifiReconnectsTotal ");
+        Serial.println(wifiReconnectsTotal);
+        saveNVSData();  // Save the updated reconnect count
         reconnectAttempts = 0;
         firstDisconnectTime = 0;
-        queueConsoleMessage("WiFi reconnected successfully");
+        queueConsoleMessage("WiFi reconnected successfully (Reconnect #" + String(wifiReconnectsThisSession) + ")");
       }
 
       reconnecting = false;
@@ -2921,75 +2891,23 @@ void checkWiFiConnection() {
     if (reconnectAttempts > 0) {
       reconnectAttempts = 0;
       firstDisconnectTime = 0;
+      wifiSessionStartTime = millis();  // Reset WiFi session timer on reconnect
     }
-    if (wifiSessionStartTime == 0) {
-      wifiSessionStartTime = millis();
+
+    // Throttled update of session duration
+    if (wifiSessionStartTime > 0 && millis() - throttle123 >= 1000) {
+      CurrentWifiSessionDuration = (millis() - wifiSessionStartTime) / 1000 / 60;  //minutes
+      throttle123 = millis();
     }
   }
 }
-void parseCSVData(char *data, float *floatVals, int *intVals, unsigned long *ulongVals, char **stringVals) {
-  char *saveptr;
-  char *token;
-  int index = 0;
 
-  token = strtok_r(data, ",", &saveptr);
-  while (token != NULL && index < 50) {  // Increase if needed
-    switch (index) {
-      // Keep the existing cases 0-28 exactly as they are
-      case 0: intVals[0] = atoi(token); break;     // AlternatorChargedEnergy
-      case 1: intVals[1] = atoi(token); break;     // AlternatorFuelUsed
-      case 2: floatVals[0] = atof(token); break;   // IBVMax
-      case 3: floatVals[1] = atof(token); break;   // MeasuredAmpsMax
-      case 4: intVals[2] = atoi(token); break;     // RPMMax
-      case 5: intVals[3] = atoi(token); break;     // SoC_percent
-      case 6: intVals[4] = atoi(token); break;     // EngineRunTime
-      case 7: intVals[5] = atoi(token); break;     // EngineCycles
-      case 8: intVals[6] = atoi(token); break;     // AlternatorOnTime
-      case 9: ulongVals[3] = atol(token); break;   // ChargedEnergy
-      case 10: ulongVals[4] = atol(token); break;  // DischargedEnergy
-      case 11: floatVals[2] = atof(token); break;  // MaxAlternatorTemperatureF
-      case 12: intVals[9] = atoi(token); break;    // MaxTemperatureThermistor
-      case 13: ulongVals[0] = atol(token); break;  // lastSessionDuration
-      case 14: intVals[10] = atoi(token); break;   // lastSessionMaxLoopTime
-      case 15: intVals[11] = atoi(token); break;   // lastSessionMinHeap
-      case 16: intVals[12] = atoi(token); break;   // wifiReconnectsTotal
-      case 17:
-        strncpy(stringVals[0], token, 63);
-        stringVals[0][63] = '\0';
-        break;  // lastResetReason
-      case 18:
-        strncpy(stringVals[1], token, 63);
-        stringVals[1][63] = '\0';
-        break;                                     // lastWifiResetReason
-      case 19: floatVals[3] = atof(token); break;  // CumulativeInsulationDamage
-      case 20: floatVals[4] = atof(token); break;  // CumulativeGreaseDamage
-      case 21: floatVals[5] = atof(token); break;  // CumulativeBrushDamage
-      case 22: floatVals[6] = atof(token); break;  // DynamicShuntGainFactor
-      case 23: floatVals[7] = atof(token); break;  // DynamicAltCurrentZero
-      case 24: ulongVals[1] = atol(token); break;  // lastGainCorrectionTime
-      case 25: ulongVals[2] = atol(token); break;  // lastAutoZeroTime
-      case 26: floatVals[8] = atof(token); break;  // lastAutoZeroTemp
-      case 27: intVals[13] = atoi(token); break;   // totalPowerCycles
-      case 28:
-        ulongVals[3] = atol(token);
-        break;  // lastWifiSessionDuration
-
-      // Add new fields if we store them in persistent data
-      case 29: intVals[14] = atoi(token); break;  // BatteryCurrentSource
-      case 30: intVals[15] = atoi(token); break;  // InvertBatteryMonitorAmps
-      case 31: intVals[16] = atoi(token); break;  // webgaugesinterval
-      case 32: intVals[17] = atoi(token); break;  // plotTimeWindow
-    }
-    token = strtok_r(NULL, ",", &saveptr);
-    index++;
-  }
-}
 
 
 /**
  * AI_SUMMARY: WiFi data transmission engine - builds 140+ field CSV payload, manages real-time EventSource updates, handles plot data, connection monitoring
  * AI_PURPOSE: Core web interface driver - packages all sensor/status data into CSV, sends via EventSource, updates 4 uPlot charts, manages WiFi connection status
- * AI_INPUTS: 140+ global variables (IBV, Bcur, MeasuredAmps, DutyCycle, etc.), timing controls (webgaugesinterval=1000ms), plot arrays, connection state
+ * AI_INPUTS: 140+ global variables (IBV, Bcur, MeasuredAmps, dutyCycle, etc.), timing controls (webgaugesinterval=1000ms), plot arrays, connection state
  * AI_OUTPUTS: EventSource "CSVData" (1400-byte CSV every 1sec), "TimestampData" (staleness ages every 3sec), 4 plot updates, connection status UI, console messages
  * AI_DEPENDENCIES: fieldIndexes[146] mapping array in HTML (CRITICAL - must stay in sync!), static payload[1400] buffer, currentTempData/voltageData/rpmData/temperatureData plot arrays, events EventSource object
  * AI_RISKS: 1400-byte WiFi packet limit at 95% capacity. Inconsistent scaling (voltage×100, current×100, fieldCurrent×10, dynamicFactors×1000, lifePercent×100). fieldIndexes array desync breaks entire interface. Static buffer prevents overflow but limits growth.  Complex conditional payload building easy to break.
@@ -3002,9 +2920,11 @@ void SendWifiData() {
   bool sendingPayloadThisCycle = false;
   // ===== Main CSV Payload =====
   if (now - prev_millis5 > webgaugesinterval) {
+
+
     // Calculate maxPoints for uPlotting based on time window and update rate
     int calculatedMaxPoints = (plotTimeWindow * 1000) / webgaugesinterval;
-    calculatedMaxPoints = constrain(calculatedMaxPoints, 10, 1000);
+    calculatedMaxPoints = constrain(calculatedMaxPoints, 1, 10000000);
     WifiStrength = WiFi.RSSI();
     WifiHeartBeat++;
     processConsoleQueue();  // Process console message queue - send one message per interval
@@ -3015,7 +2935,7 @@ void SendWifiData() {
                                   // CSV field order: see index.html -> fields[] mapping
       static char payload[1400];  // >1400 the wifi transmission won't fit in 1 packet , must be static to save heap!
       snprintf(payload, sizeof(payload),
-               "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
+               "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
                "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
                "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
                "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
@@ -3023,7 +2943,7 @@ void SendWifiData() {
 
                // Readings
                SafeInt(AlternatorTemperatureF),     // 0
-               SafeInt(DutyCycle),                  // 1
+               SafeInt(dutyCycle),                  // 1
                SafeInt(BatteryV, 100),              // 2
                SafeInt(MeasuredAmps, 100),          // 3
                SafeInt(RPM),                        // 4
@@ -3045,7 +2965,7 @@ void SendWifiData() {
                SafeInt(IBVMax, 100),                // 20
                SafeInt(MeasuredAmpsMax, 100),       // 21
                SafeInt(RPMMax),                     // 22
-               SafeInt(SoC_percent),                // 23
+               SafeInt(SOC_percent),                // 23
                SafeInt(EngineRunTime),              // 24
                SafeInt(EngineCycles),               // 25
                SafeInt(AlternatorOnTime),           // 26
@@ -3075,15 +2995,15 @@ void SendWifiData() {
                SafeInt(TargetAmpL),                   // 48
 
                // More Settings
-               SafeInt(CurrentThreshold_scaled),    // 49
+               SafeInt(CurrentThreshold, 100),      // 49
                SafeInt(PeukertExponent_scaled),     // 50
                SafeInt(ChargeEfficiency_scaled),    // 51
                SafeInt(ChargedVoltage_Scaled),      // 52
                SafeInt(TailCurrent),                // 53
                SafeInt(ChargedDetectionTime),       // 54
                SafeInt(IgnoreTemperature),          // 55
-               SafeInt(BMSlogic),                   // 56
-               SafeInt(BMSLogicLevelOff),           // 57
+               SafeInt(bmsLogic),                   // 56
+               SafeInt(bmsLogicLevelOff),           // 57
                SafeInt(AlarmActivate),              // 58
                SafeInt(TempAlarm),                  // 59
                SafeInt(VoltageAlarmHigh),           // 60
@@ -3132,53 +3052,63 @@ void SendWifiData() {
                SafeInt(TempSource),        //103
                SafeInt(IgnitionOverride),  //104
                // More Readings
-               SafeInt(temperatureThermistor),                                                      // 105
-               SafeInt(MaxTemperatureThermistor),                                                   // 106
-               SafeInt(VictronCurrent, 100),                                                        // 107
-                                                                                                    //AlarmStuff
-               SafeInt(AlarmTest),                                                                  // New index: 108
-               SafeInt(AlarmLatchEnabled),                                                          // New index: 109
-               SafeInt(alarmLatch ? 1 : 0),                                                         // New index: 110 (current latch state)
-               SafeInt(ResetAlarmLatch),                                                            // New index: 111
-               SafeInt(ForceFloat),                                                                 //  112
-               SafeInt(bulkCompleteTime),                                                           // 113
-               SafeInt(FLOAT_DURATION),                                                             // 114
-               SafeInt(LatitudeNMEA * 1000000),                                                     // 115 - Convert to integer with 6 decimal precision
-               SafeInt(LongitudeNMEA * 1000000),                                                    // 116 - Convert to integer with 6 decimal precision
-               SafeInt(SatelliteCountNMEA),                                                         // 117
-               SafeInt(GPIO33_Status),                                                              //  118
-               SafeInt(fieldActiveStatus),                                                          // 119
-               SafeInt(timeToFullChargeMin),                                                        // 120
-               SafeInt(timeToFullDischargeMin),                                                     // 121
-               SafeInt(AutoShuntGainCorrection),                                                    // 122 BOOLEAN
-               SafeInt(DynamicShuntGainFactor, 1000),                                               // 123 (multiply by 1000 for 3 decimal precision)
-               SafeInt(AutoAltCurrentZero),                                                         // 124 // BOOLEAN
-               SafeInt(DynamicAltCurrentZero, 1000),                                                // 125 (multiply by 1000 for 3 decimal
-               SafeInt(InsulationLifePercent, 100),                                                 // XX% * 100 for 2 decimal precision
-               SafeInt(GreaseLifePercent, 100),                                                     // XX% * 100 for 2 decimal precision
-               SafeInt(BrushLifePercent, 100),                                                      // XX% * 100 for 2 decimal precision
-               SafeInt(PredictedLifeHours),                                                         // Integer hours
-               SafeInt(LifeIndicatorColor),                                                         // 0=green, 1=yellow, 2=red
-               SafeInt(WindingTempOffset, 10),                                                      // User setting * 10 for 1 decimal
-               SafeInt(PulleyRatio, 100),                                                           // 132    User setting * 100 for 2 decimals
-               SafeInt(lastSessionDuration),                                                        // Last session duration (minutes)
-               SafeInt(lastSessionMaxLoopTime),                                                     // Last session max loop (μs)
-               SafeInt(lastSessionMinHeap),                                                         // Last session min heap (KB)
-               SafeInt(wifiReconnectsThisSession),                                                  // WiFi reconnects this session
-               SafeInt(wifiReconnectsTotal),                                                        // WiFi reconnects total
-               SafeInt((millis() - sessionStartTime) / 60000),                                      // Current session duration (minutes)
-               SafeInt(wifiSessionStartTime > 0 ? (millis() - wifiSessionStartTime) / 60000 : -1),  // Current WiFi session (minutes)
-               SafeInt(encodeResetReason(lastResetReason)),                                         // 140
-               SafeInt(encodeWifiResetReason(lastWifiResetReason)),                                 // 141
-               SafeInt(ManualLifePercentage),                                                       //142
+               SafeInt(temperatureThermistor),         // 105
+               SafeInt(MaxTemperatureThermistor),      // 106
+               SafeInt(VictronCurrent, 100),           // 107
+                                                       //AlarmStuff
+               SafeInt(AlarmTest),                     // New index: 108
+               SafeInt(AlarmLatchEnabled),             // New index: 109
+               SafeInt(alarmLatch ? 1 : 0),            // New index: 110 (current latch state)
+               SafeInt(ResetAlarmLatch),               // New index: 111
+               SafeInt(ForceFloat),                    //  112
+               SafeInt(bulkCompleteTime),              // 113
+               SafeInt(FLOAT_DURATION),                // 114
+               SafeInt(LatitudeNMEA * 1000000),        // 115 - Convert to integer with 6 decimal precision
+               SafeInt(LongitudeNMEA * 1000000),       // 116 - Convert to integer with 6 decimal precision
+               SafeInt(SatelliteCountNMEA),            // 117
+               SafeInt(GPIO33_Status),                 //  118
+               SafeInt(fieldActiveStatus),             // 119
+               SafeInt(timeToFullChargeMin),           // 120
+               SafeInt(timeToFullDischargeMin),        // 121
+               SafeInt(AutoShuntGainCorrection),       // 122 BOOLEAN
+               SafeInt(DynamicShuntGainFactor, 1000),  // 123 (multiply by 1000 for 3 decimal precision)
+               SafeInt(AutoAltCurrentZero),            // 124 // BOOLEAN
+               SafeInt(DynamicAltCurrentZero, 1000),   // 125 (multiply by 1000 for 3 decimal
+               SafeInt(InsulationLifePercent, 100),    // XX% * 100 for 2 decimal precision
+               SafeInt(GreaseLifePercent, 100),        // XX% * 100 for 2 decimal precision
+               SafeInt(BrushLifePercent, 100),         // XX% * 100 for 2 decimal precision
+               SafeInt(PredictedLifeHours),            // Integer hours
+               SafeInt(LifeIndicatorColor),            // 0=green, 1=yellow, 2=red
+               SafeInt(WindingTempOffset, 10),         // User setting * 10 for 1 decimal
+               SafeInt(PulleyRatio, 100),              // 132    User setting * 100 for 2 decimals
+               SafeInt(LastSessionDuration),           // Last session duration (minutes)
+               SafeInt(LastSessionMaxLoopTime),        // Last session max loop (μs) //134
+               SafeInt(lastSessionMinHeap),            // Last session min heap (KB)
+               SafeInt(wifiReconnectsThisSession),     // WiFi reconnects this session
+               SafeInt(wifiReconnectsTotal),           // WiFi reconnects total
+               SafeInt(CurrentSessionDuration),        // 138
+               SafeInt(CurrentWifiSessionDuration),    // Current WiFi session (minutes)
+               SafeInt(LastResetReason),               // 140 it's already and int, but whatever
+               SafeInt(ancientResetReason),            // 141
+               SafeInt(ManualLifePercentage),          //142
 
-               SafeInt(totalPowerCycles),                                                       // 143
-               SafeInt(lastWifiSessionDuration),                                                // 144
-               SafeInt(lastSessionEndTime > 0 ? (millis() / 60000) - lastSessionEndTime : -1),  // 145
-               SafeInt(BatteryCurrentSource),                                                   // 146 NEW
-               SafeInt(InvertBatteryMonitorAmps),                                               // 147 NEW
-               SafeInt(webgaugesinterval),                                                      // 148 NEW
-               SafeInt(plotTimeWindow)                                                          // 149 NEW
+               SafeInt(totalPowerCycles),         // 143
+               SafeInt(lastWifiSessionDuration),  // 144
+               SafeInt(EXTRA),                    // 145
+               SafeInt(BatteryCurrentSource),     // 146
+               SafeInt(timeAxisModeChanging),     // 147
+               SafeInt(webgaugesinterval),        // 148
+               SafeInt(plotTimeWindow),           // 149
+
+               SafeInt(Ymin1),  // 150
+               SafeInt(Ymax1),
+               SafeInt(Ymin2),  //152
+               SafeInt(Ymax2),
+               SafeInt(Ymin3),  //154
+               SafeInt(Ymax3),
+               SafeInt(Ymin4),  //156
+               SafeInt(Ymax4)   //157
+
 
       );
       // Send main sensor data payload
@@ -3187,6 +3117,13 @@ void SendWifiData() {
       sendingPayloadThisCycle = true;     // Flag this as a bad function iteration to also send timestampPayload
     }
     prev_millis5 = now;
+  }
+
+  // keepalive sent every 25 seconds to prevent HTTP timeout on a wifi disconnection
+  static unsigned long lastKeepalive = 0;
+  if (millis() - lastKeepalive > 25000) {
+    events.send(": keepalive\n", NULL);  // SSE comment = keepalive
+    lastKeepalive = millis();
   }
   //            timestampPayload - NOW SENDS AGES INSTEAD OF TIMESTAMPS
   if (!sendingPayloadThisCycle && now - lastTimestampSend > 3000) {  // Every 3 seconds
@@ -3294,7 +3231,7 @@ void UpdateBatterySOC(unsigned long elapsedMillis) {
   }
 
   // Rest of the function continues as in the original...
-  alternatorIsOn = (AlternatorCurrent_scaled > CurrentThreshold_scaled);
+  alternatorIsOn = (AlternatorCurrent_scaled > CurrentThreshold * 100);
 
   if (alternatorIsOn) {
     alternatorOnAccumulator += elapsedMillis;
@@ -3355,13 +3292,13 @@ void UpdateBatterySOC(unsigned long elapsedMillis) {
   // Constrain and calculate SoC with decimal precision
   CoulombCount_Ah_scaled = constrain(CoulombCount_Ah_scaled, 0, BatteryCapacity_Ah * 100);
   float SoC_float = (float)CoulombCount_Ah_scaled / (BatteryCapacity_Ah * 100.0f) * 100.0f;
-  SoC_percent = (int)(SoC_float * 100);  // Store as percentage × 100 for 2 decimal places
+  SOC_percent = (int)(SoC_float * 100);  // Store as percentage × 100 for 2 decimal places
 
   // --- Full Charge Detection ---
   if ((abs(BatteryCurrent_scaled) <= (TailCurrent * BatteryCapacity_Ah / 100)) && (Voltage_scaled >= ChargedVoltage_Scaled)) {
     FullChargeTimer += elapsedSeconds;
     if (FullChargeTimer >= ChargedDetectionTime) {
-      SoC_percent = 10000;  // 100.00% (scaled by 100)
+      SOC_percent = 10000;  // 100.00% (scaled by 100)
       CoulombCount_Ah_scaled = BatteryCapacity_Ah * 100;
       FullChargeDetected = true;
       coulombAccumulator_Ah = 0.0f;
@@ -3398,64 +3335,6 @@ void UpdateEngineRuntime(unsigned long elapsedMillis) {
   engineWasRunning = engineIsRunning;
 }
 
-void SaveAllData() {
-  static char dataBuffer[2048];  // Static = no stack usage
-  int pos = 0;
-
-  // Reset and build data string
-  pos = 0;
-
-  // Energy and runtime data
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", AlternatorChargedEnergy);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", AlternatorFuelUsed);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.3f,", IBVMax);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.3f,", MeasuredAmpsMax);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", RPMMax);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", SoC_percent);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", EngineRunTime);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", EngineCycles);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", AlternatorOnTime);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", ChargedEnergy);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", DischargedEnergy);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.0f,", MaxAlternatorTemperatureF);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", MaxTemperatureThermistor);
-
-  // Session health data - Save LAST session data (not current!)
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%lu,", lastSessionDuration);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", lastSessionMaxLoopTime);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", lastSessionMinHeap);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", wifiReconnectsTotal);
-
-  // Reset reasons (strings need special handling)
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%s,", lastResetReason.c_str());
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%s,", lastWifiResetReason.c_str());
-
-  // Thermal stress data
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.6f,", CumulativeInsulationDamage);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.6f,", CumulativeGreaseDamage);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.6f,", CumulativeBrushDamage);
-
-  // Dynamic correction factors
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.4f,", DynamicShuntGainFactor);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.3f,", DynamicAltCurrentZero);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%lu,", lastGainCorrectionTime);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%lu,", lastAutoZeroTime);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%.1f,", lastAutoZeroTemp);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%d,", totalPowerCycles);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, "%lu", lastWifiSessionDuration);  // No comma on last item
-
-pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, ",%d", BatteryCurrentSource);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, ",%d", InvertBatteryMonitorAmps);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, ",%d", webgaugesinterval);
-  pos += snprintf(dataBuffer + pos, sizeof(dataBuffer) - pos, ",%d", plotTimeWindow);
-  
-  // Safety check and write
-  if (pos < sizeof(dataBuffer) - 1) {  // Leave room for null terminator
-    writeFile(LittleFS, "/alldata.txt", dataBuffer);
-  } else {
-    queueConsoleMessage("ERROR: Data buffer overflow in SaveAllData()");
-  }
-}
 
 void sha256(const char *input, char *outputBuffer) {  // for security
   byte shaResult[32];
@@ -3599,13 +3478,9 @@ float getBatteryCurrent() {
     case 0:  // INA228 Battery Shunt (default)
       if (INADisconnected == 0 && !isnan(Bcur)) {
         batteryCurrent = Bcur;  // Already has BatteryCOffset and dynamic gain applied
-        // Apply battery monitor specific inversion if needed
-        if (InvertBatteryMonitorAmps == 1) {
-          batteryCurrent = -batteryCurrent;
-        }
       } else {
         if (millis() - lastWarningTime > WARNING_INTERVAL) {
-          queueConsoleMessage("WARNING: INA228 unavailable for battery monitoring");
+          queueConsoleMessage("C0- WARNING: INA228 unavailable for battery monitoring");
           lastWarningTime = millis();
         }
         batteryCurrent = 0;  // Safe default for SoC tracking
@@ -3613,17 +3488,21 @@ float getBatteryCurrent() {
       break;
 
     case 1:  // NMEA2K Battery
-      queueConsoleMessage("NMEA2K Battery current not implemented, using INA228");
+      queueConsoleMessage("C1-NMEA2K Battery current not implemented, using INA228");
       batteryCurrent = Bcur;
-      if (InvertBatteryMonitorAmps == 1) {
+      if (1 == 1) {  // update this later
         batteryCurrent = -batteryCurrent;
       }
       break;
 
     case 2:  // NMEA0183 Battery
-      queueConsoleMessage("NMEA0183 Battery current not implemented, using INA228");
+      if (millis() - lastWarningTime > WARNING_INTERVAL) {
+
+        queueConsoleMessage("C2-NMEA0183 Battery current not implemented, using INA228");
+        lastWarningTime = millis();
+      }
       batteryCurrent = Bcur;
-      if (InvertBatteryMonitorAmps == 1) {
+      if (1 == 1) {  // update this later
         batteryCurrent = -batteryCurrent;
       }
       break;
@@ -3638,7 +3517,7 @@ float getBatteryCurrent() {
           lastWarningTime = millis();
         }
         batteryCurrent = Bcur;
-        if (InvertBatteryMonitorAmps == 1) {
+        if (1 == 1) {  // update this later
           batteryCurrent = -batteryCurrent;
         }
       }
@@ -3647,7 +3526,7 @@ float getBatteryCurrent() {
     default:
       queueConsoleMessage("Invalid BatteryCurrentSource, using INA228");
       batteryCurrent = Bcur;
-      if (InvertBatteryMonitorAmps == 1) {
+      if (1 == 1) {  // update this later
         batteryCurrent = -batteryCurrent;
       }
       break;
@@ -3785,7 +3664,6 @@ float getBatteryVoltage() {
 }
 
 float getTargetAmps() {
-
   float targetValue = 0;
 
   switch (AmpSrc) {
@@ -3798,22 +3676,22 @@ float getTargetAmps() {
       break;
 
     case 2:  // NMEA2K Batt
-      queueConsoleMessage("NMEA2K Battery current not implemented, using Battery Shunt");
+      queueConsoleMessage("C2a NMEA2K Battery current not implemented, using Battery Shunt");
       targetValue = Bcur;
       break;
 
     case 3:  // NMEA2K Alt
-      queueConsoleMessage("NMEA2K Alternator current not implemented, using Alt Hall Sensor");
+      queueConsoleMessage("C3a NMEA2K Alternator current not implemented, using Alt Hall Sensor");
       targetValue = MeasuredAmps;
       break;
 
     case 4:  // NMEA0183 Batt
-      queueConsoleMessage("NMEA0183 Battery current not implemented, using Battery Shunt");
+      queueConsoleMessage("C4a NMEA0183 Battery current not implemented, using Battery Shunt");
       targetValue = Bcur;
       break;
 
     case 5:  // NMEA0183 Alt
-      queueConsoleMessage("NMEA0183 Alternator current not implemented, using Alt Hall Sensor");
+      queueConsoleMessage("C5a NMEA0183 Alternator current not implemented, using Alt Hall Sensor");
       targetValue = MeasuredAmps;
       break;
 
@@ -3821,7 +3699,7 @@ float getTargetAmps() {
       if (abs(VictronCurrent) > 0.1) {  // Valid reading
         targetValue = VictronCurrent;
       } else {
-        queueConsoleMessage("Victron current not available, using Battery Shunt");
+        queueConsoleMessage("C6a Victron current not available, using Battery Shunt");
         targetValue = Bcur;
       }
       break;
@@ -3968,7 +3846,7 @@ void logDashboardValues() {
     lastDashboardLog = millis();
     String dashboardLog = "DASHBOARD: ";
     dashboardLog += "IBV=" + String(IBV, 2) + "V ";
-    dashboardLog += "SoC=" + String(SoC_percent / 100) + "% ";
+    dashboardLog += "SoC=" + String(SOC_percent / 100) + "% ";
     dashboardLog += "AltI=" + String(MeasuredAmps, 1) + "A ";
     dashboardLog += "BattI=" + String(Bcur, 1) + "A ";
     dashboardLog += "AltT=" + String((int)AlternatorTemperatureF) + "°F ";
@@ -4020,12 +3898,12 @@ void calculateChargeTimes() {
 
   if (currentAmps > 0.01) {  // charging
     // Calculate remaining capacity needed to reach 100%
-    float currentSoC = SoC_percent / 100.0;  // Convert from scaled format
+    float currentSoC = SOC_percent / 100.0;  // Convert from scaled format
     float remainingCapacity = BatteryCapacity_Ah * (100.0 - currentSoC) / 100.0;
     timeToFullChargeMin = (int)(remainingCapacity / currentAmps * 60.0);
     timeToFullDischargeMin = -999;           // Not applicable while charging
   } else if (currentAmps < -0.01) {          // discharging
-    float currentSoC = SoC_percent / 100.0;  // Convert from scaled format
+    float currentSoC = SOC_percent / 100.0;  // Convert from scaled format
     float availableCapacity = BatteryCapacity_Ah * currentSoC / 100.0;
     timeToFullDischargeMin = (int)(availableCapacity / (-currentAmps) * 60.0);
     timeToFullChargeMin = -999;  // Not applicable while discharging
@@ -4095,11 +3973,6 @@ void applySocGainCorrection() {
   // Apply the correction
   DynamicShuntGainFactor = newFactor;
   lastGainCorrectionTime = now;
-
-  // Save to persistent storage
-  writeFile(LittleFS, "/DynamicShuntGainFactor.txt", String(DynamicShuntGainFactor, 4).c_str());
-  writeFile(LittleFS, "/lastGainCorrectionTime.txt", String(lastGainCorrectionTime).c_str());
-
   queueConsoleMessage("SOC Gain: Corrected from " + String(currentFactor, 4) + " to " + String(newFactor, 4) + " (Calc:" + String(calculatedCapacity, 1) + "Ah, Expected:" + String(expectedCapacity, 1) + "Ah)");
 }
 
@@ -4108,11 +3981,6 @@ void handleSocGainReset() {
     DynamicShuntGainFactor = 1.0;
     lastGainCorrectionTime = 0;
     ResetDynamicShuntGain = 0;  // Clear the momentary flag
-
-    // Save to persistent storage
-    writeFile(LittleFS, "/DynamicShuntGainFactor.txt", "1.0");
-    writeFile(LittleFS, "/lastGainCorrectionTime.txt", "0");
-
     queueConsoleMessage("SOC Gain: Dynamic gain factor reset to 1.0");
   }
 }
@@ -4207,12 +4075,6 @@ void processAutoZero() {
     autoZeroStartTime = 0;      // Clear active flag
     autoZeroAccumulator = 0.0;  // Reset accumulator
     autoZeroSampleCount = 0;
-
-    // Save to persistent storage
-    writeFile(LittleFS, "/DynamicAltCurrentZero.txt", String(DynamicAltCurrentZero, 3).c_str());
-    writeFile(LittleFS, "/lastAutoZeroTime.txt", String(lastAutoZeroTime).c_str());
-    writeFile(LittleFS, "/lastAutoZeroTemp.txt", String(lastAutoZeroTemp, 1).c_str());
-
     queueConsoleMessage("Auto-zero: Complete, new zero offset: " + String(DynamicAltCurrentZero, 3) + "A (avg of " + String(autoZeroSampleCount) + " samples)");
   }
 }
@@ -4224,12 +4086,6 @@ void handleAltZeroReset() {
     lastAutoZeroTemp = -999.0;
     autoZeroStartTime = 0;    // Cancel any active auto-zero
     ResetDynamicAltZero = 0;  // Clear the momentary flag
-
-    // Save to persistent storage
-    writeFile(LittleFS, "/DynamicAltCurrentZero.txt", "0.0");
-    writeFile(LittleFS, "/lastAutoZeroTime.txt", "0");
-    writeFile(LittleFS, "/lastAutoZeroTemp.txt", "-999.0");
-
     queueConsoleMessage("Auto-zero: Dynamic alternator zero offset reset to 0.0");
   }
 }
@@ -4297,6 +4153,155 @@ void calculateThermalStress() {
   } else {
     LifeIndicatorColor = 2;  // Red
   }
+}
+
+void initializeNVS() {
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    Serial.println("NVS init issue: erasing NVS and retrying...");
+    err = nvs_flash_erase();
+    if (err != ESP_OK) {
+      Serial.printf("ERROR: Failed to erase NVS (code %d)\n", err);
+      return;
+    }
+    err = nvs_flash_init();
+  }
+  if (err != ESP_OK) {
+    Serial.printf("ERROR: Failed to initialize NVS (code %d)\n", err);
+    return;
+  }
+  Serial.println("NVS initialized successfully");
+  queueConsoleMessage("NVS initialized successfully");
+}
+
+void saveNVSData() {
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("storage", NVS_READWRITE, &nvs_handle);
+  if (err != ESP_OK) {
+    queueConsoleMessage("ERROR: Failed to open NVS");
+    Serial.println("ERROR: Failed to open NVS");
+    return;
+  }
+  // Energy Tracking
+  nvs_set_u32(nvs_handle, "ChargedEnergy", (uint32_t)ChargedEnergy);
+  nvs_set_u32(nvs_handle, "DischrgdEnergy", (uint32_t)DischargedEnergy);
+  nvs_set_u32(nvs_handle, "AltChrgdEnergy", (uint32_t)AlternatorChargedEnergy);
+  nvs_set_i32(nvs_handle, "AltFuelUsed", (int32_t)AlternatorFuelUsed);
+
+  // Runtime Tracking
+  nvs_set_i32(nvs_handle, "EngineRunTime", (int32_t)EngineRunTime);
+  nvs_set_i32(nvs_handle, "EngineCycles", (int32_t)EngineCycles);
+  nvs_set_i32(nvs_handle, "AltOnTime", (int32_t)AlternatorOnTime);
+
+  // Battery State
+  nvs_set_i32(nvs_handle, "SOC_percent", (int32_t)SOC_percent);
+  nvs_set_i32(nvs_handle, "CoulombCount", (int32_t)CoulombCount_Ah_scaled);
+
+  // Session Health Stats
+  nvs_set_u32(nvs_handle, "SessionDur", (uint32_t)CurrentSessionDuration);
+  nvs_set_i32(nvs_handle, "MaxLoop", (int32_t)MaxLoopTime);
+  nvs_set_i32(nvs_handle, "MinHeap", (int32_t)sessionMinHeap);
+  nvs_set_u32(nvs_handle, "WifiDur", (uint32_t)CurrentWifiSessionDuration);
+
+  // System Health Counters
+  nvs_set_i32(nvs_handle, "WifiReconnects", (int32_t)wifiReconnectsTotal);
+  nvs_set_i32(nvs_handle, "PowerCycles", (int32_t)totalPowerCycles);
+
+  // Thermal Stress
+  nvs_set_blob(nvs_handle, "InsulDamage", &CumulativeInsulationDamage, sizeof(float));
+  nvs_set_blob(nvs_handle, "GreaseDamage", &CumulativeGreaseDamage, sizeof(float));
+  nvs_set_blob(nvs_handle, "BrushDamage", &CumulativeBrushDamage, sizeof(float));
+
+  // Dynamic Learning
+  nvs_set_blob(nvs_handle, "ShuntGain", &DynamicShuntGainFactor, sizeof(float));
+  nvs_set_blob(nvs_handle, "AltZero", &DynamicAltCurrentZero, sizeof(float));
+  nvs_set_u32(nvs_handle, "LastGainTime", (uint32_t)lastGainCorrectionTime);
+  nvs_set_u32(nvs_handle, "LastZeroTime", (uint32_t)lastAutoZeroTime);
+  nvs_set_blob(nvs_handle, "LastZeroTemp", &lastAutoZeroTemp, sizeof(float));
+
+  nvs_commit(nvs_handle);
+  nvs_close(nvs_handle);
+}
+
+void loadNVSData() {
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+  if (err != ESP_OK) {
+    queueConsoleMessage("NVS: No existing data found, using defaults");
+      Serial.println("NVS: No existing data found, using defaults");
+
+    return;
+  }
+
+  size_t required_size;
+  uint32_t temp_uint32;
+  int32_t temp_int32;
+
+  // Energy Tracking
+  if (nvs_get_u32(nvs_handle, "ChargedEnergy", &temp_uint32) == ESP_OK) ChargedEnergy = temp_uint32;
+  if (nvs_get_u32(nvs_handle, "DischrgdEnergy", &temp_uint32) == ESP_OK) DischargedEnergy = temp_uint32;
+  if (nvs_get_u32(nvs_handle, "AltChrgdEnergy", &temp_uint32) == ESP_OK) AlternatorChargedEnergy = temp_uint32;
+  if (nvs_get_i32(nvs_handle, "AltFuelUsed", &temp_int32) == ESP_OK) AlternatorFuelUsed = temp_int32;
+
+  // Runtime Tracking
+  if (nvs_get_i32(nvs_handle, "EngineRunTime", &temp_int32) == ESP_OK) EngineRunTime = temp_int32;
+  if (nvs_get_i32(nvs_handle, "EngineCycles", &temp_int32) == ESP_OK) EngineCycles = temp_int32;
+  if (nvs_get_i32(nvs_handle, "AltOnTime", &temp_int32) == ESP_OK) AlternatorOnTime = temp_int32;
+
+  // Battery State
+  if (nvs_get_i32(nvs_handle, "SOC_percent", &temp_int32) == ESP_OK) SOC_percent = temp_int32;
+  if (nvs_get_i32(nvs_handle, "CoulombCount", &temp_int32) == ESP_OK) CoulombCount_Ah_scaled = temp_int32;
+
+  // Session Health Stats (✅ restore to prior-session variables)
+  if (nvs_get_u32(nvs_handle, "SessionDur", &temp_uint32) == ESP_OK) LastSessionDuration = temp_uint32;
+  if (nvs_get_i32(nvs_handle, "MaxLoop", &temp_int32) == ESP_OK) LastSessionMaxLoopTime = temp_int32;
+  if (nvs_get_i32(nvs_handle, "MinHeap", &temp_int32) == ESP_OK) lastSessionMinHeap = temp_int32;
+  if (nvs_get_u32(nvs_handle, "WifiDur", &temp_uint32) == ESP_OK) lastWifiSessionDuration = temp_uint32;
+
+  // System Health Counters
+  if (nvs_get_i32(nvs_handle, "WifiReconnects", &temp_int32) == ESP_OK) wifiReconnectsTotal = temp_int32;
+  if (nvs_get_i32(nvs_handle, "PowerCycles", &temp_int32) == ESP_OK) totalPowerCycles = temp_int32;
+
+  // Thermal Stress
+  required_size = sizeof(float);
+  nvs_get_blob(nvs_handle, "InsulDamage", &CumulativeInsulationDamage, &required_size);
+  nvs_get_blob(nvs_handle, "GreaseDamage", &CumulativeGreaseDamage, &required_size);
+  nvs_get_blob(nvs_handle, "BrushDamage", &CumulativeBrushDamage, &required_size);
+
+  // Dynamic Learning
+  nvs_get_blob(nvs_handle, "ShuntGain", &DynamicShuntGainFactor, &required_size);
+  nvs_get_blob(nvs_handle, "AltZero", &DynamicAltCurrentZero, &required_size);
+  if (nvs_get_u32(nvs_handle, "LastGainTime", &temp_uint32) == ESP_OK) lastGainCorrectionTime = temp_uint32;
+  if (nvs_get_u32(nvs_handle, "LastZeroTime", &temp_uint32) == ESP_OK) lastAutoZeroTime = temp_uint32;
+  nvs_get_blob(nvs_handle, "LastZeroTemp", &lastAutoZeroTemp, &required_size);
+
+  nvs_close(nvs_handle);
+  //queueConsoleMessage("NVS: Persistent data loaded successfully");
+}
+
+void RestoreLastSessionValues() {
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open("storage", NVS_READONLY, &nvs_handle);
+  if (err != ESP_OK) {
+    Serial.println("There were no prior Session values stored in NVS");
+  return;  // 
+  }
+  uint32_t temp_u32;
+  int32_t temp_i32;
+
+  if (nvs_get_u32(nvs_handle, "SessionDur", &temp_u32) == ESP_OK)
+    LastSessionDuration = temp_u32;
+
+  if (nvs_get_i32(nvs_handle, "MaxLoop", &temp_i32) == ESP_OK)
+    LastSessionMaxLoopTime = temp_i32;
+
+  if (nvs_get_i32(nvs_handle, "MinHeap", &temp_i32) == ESP_OK)
+    lastSessionMinHeap = temp_i32;
+
+  if (nvs_get_u32(nvs_handle, "WifiDur", &temp_u32) == ESP_OK)
+    lastWifiSessionDuration = temp_u32;
+
+  nvs_close(nvs_handle);
 }
 
 void StuffToDoAtSomePoint() {
