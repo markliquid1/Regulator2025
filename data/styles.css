@@ -1,3 +1,4 @@
+/* XREG_START */
 /* 
  * AI_SUMMARY: Alternator Regulator Project - This file is the styling for the served page
  * AI_PURPOSE: 
@@ -7,8 +8,28 @@
  * AI_RISKS: Styling was added ad-hoc, does not follow consistent patterns.  Remember to consider dark mode on every change to styling.
  * AI_OPTIMIZE: When adding new styles, try to first use or modify existing styles whenever possible, to avoid bloat.
  */
+/* 
+ // X Engineering Alternator Regulator
+//     Copyright (C) 2025  Mark Nickerson
 
-:root {
+//     This program is free software: you can redistribute it and/or modify
+//     it under the terms of the GNU General Public License as published by
+//     the Free Software Foundation, either version 3 of the License, or
+//     (at your option) any later version.
+
+//     This program is distributed in the hope that it will be useful,
+//     but WITHOUT ANY WARRANTY; without even the implied warranty of
+//     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//     GNU General Public License for more details.
+
+//  See <https://www.gnu.org/licenses/> for GNU General Public License
+
+// Contact me at mark@xengineering.net
+
+//By using this device, you agree to XEngineering’s Terms and Conditions:
+// https://xengineering.net/terms-and-conditions/ */
+
+ :root {
   --primary: #333333;
   /* Dark gray primary */
   --accent: #00a19a;
@@ -63,6 +84,179 @@ body {
       0 0 12px rgba(0, 161, 154, 0.4),
       0 0 16px rgba(0, 161, 154, 0.2);
     transform: scale(1.05);
+  }
+}
+
+
+/* PID Learning Section */
+
+.learning-section {
+  margin-bottom: 20px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.learning-status {
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.learning-status-active {
+  background-color: rgba(0, 161, 154, 0.2);
+  color: var(--accent);
+}
+
+.learning-status-paused {
+  background-color: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+}
+
+.learning-status-dryrun {
+  background-color: rgba(156, 39, 176, 0.2);
+  color: #9c27b0;
+}
+
+.learning-status-inactive {
+  background-color: rgba(158, 158, 158, 0.2);
+  color: #999;
+}
+
+.learning-table-container {
+  overflow-x: auto;
+  margin-bottom: 15px;
+}
+
+.learning-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+
+.learning-table th {
+  background: var(--accent);
+  color: white;
+  padding: 10px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.learning-table td {
+  padding: 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.learning-table input[type="number"] {
+  width: 100%;
+  max-width: 100px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-light);
+  color: var(--text-dark);
+  text-align: center;
+  font-size: 14px;
+}
+
+.learning-table input[type="number"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--card-light);
+}
+
+.learning-table input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 161, 154, 0.2);
+}
+
+.learning-table-row {
+  background-color: var(--background);
+}
+
+.learning-table-row-active {
+  background: rgba(0, 161, 154, 0.1);
+}
+
+.learning-table-row:hover {
+  background: var(--card-light);
+}
+
+.learning-table-rpm {
+  font-weight: bold;
+  color: var(--text-dark);
+}
+
+.learning-table-amps {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.learning-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 15px;
+  margin: 15px 0;
+}
+
+.learning-info-item {
+  background: var(--card-light);
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.learning-info-value-pair {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.learning-info-value-pair:last-child {
+  border-bottom: none;
+}
+
+.learning-info-label {
+  font-size: 12px;
+  color: var(--text-dark);
+}
+
+.learning-info-value {
+  font-weight: bold;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .learning-table {
+      font-size: 10px;
+  }
+  
+  .learning-table th,
+  .learning-table td {
+      padding: 4px 6px;
+  }
+  
+  .learning-table input[type="number"] {
+      max-width: 80px;
+      padding: 4px;
+      font-size: 12px;
+  }
+  
+  .learning-info-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 
@@ -442,6 +636,11 @@ body {
   display: block;
 }
 
+/* used to hide/gray tabs that require internet connectivity, if in AP mode */
+.tab-hidden {
+  display: none !important;
+}
+
 h2 {
   color: var(--text-dark);
   border-bottom: 2px solid var(--accent);
@@ -801,6 +1000,26 @@ hr {
   animation: button-pulse 0.4s ease-out;
 }
 
+
+.btn-save-table {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 10px 30px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.btn-save-table:hover {
+  background-color: #d32f2f;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 /* Locking Settings Capability */
 
 .locked input,
@@ -1034,3 +1253,4 @@ input:checked+.slider:before {
   background-color: #444444;
   border: 1px solid #666666;
 }
+/* XREG_END */

@@ -1,14 +1,1038 @@
+/* XREG_START */
 /* 
  * AI_SUMMARY: Alternator Regulator Project - This file is the majority of the JS served by the ESP32
  * AI_PURPOSE: Realtime control of GPIO (settings always have echos) and viewing of sensor data and calculated values.  
- * AI_INPUTS: Payloads from the ESP32.  Server-Sent Events via /events endpoint
+ * AI_INPUTS: Payloads from the ESP32, including some variables used in this javascript such as webgaugesinterval (the ESP32 data delivery interval),timeAxisModeChanging (toggles a different style of X axis on plots generated here), plotTimeWindow (length of time to plot on X axis).  Server-Sent Events via /events endpoint
  * AI_OUTPUTS: Values submitted back to ESP32 via HTTP GET/POST requests to various endpoints
  * AI_DEPENDENCIES: 
- * AI_RISKS: Variable naming is inconsisent, need to be careful not to assume consistent patterns.   Unit conversion can be very confusing and propogate to many places, have to trace dependencies in variables FULLY to every end point
+ * AI_RISKS: Variable naming is inconsisent, need to be careful not to assume consistent patterns.   Unit conversion / scaling can be confusing and propogate to many places, have to trace dependencies in variables FULLY to every end point
  * AI_OPTIMIZE: When adding new code, try to first use or modify existing code whenever possible, to avoid bloat.  When impossible, always mimik my style and coding patterns.
- */
+ * CRITICAL_INSTRUCTION_FOR_AI:: When adding new code, try to first use or modify existing code whenever possible, to avoid bloat. When impossible, always mimick my style and coding patterns. If you have a performance improvement idea, tell me. When giving me new code, I prefer complete copy and paste functions when they are short, or for you to give step by step instructions for me to edit if function is long, to conserve tokens. Always specify which option you chose.  Never re-write the entire file, this just wastes my tokens.
+*/
+
+// X Engineering Alternator Regulator
+//     Copyright (C) 2025  Mark Nickerson
+
+//     This program is free software: you can redistribute it and/or modify
+//     it under the terms of the GNU General Public License as published by
+//     the Free Software Foundation, either version 3 of the License, or
+//     (at your option) any later version.
+
+//     This program is distributed in the hope that it will be useful,
+//     but WITHOUT ANY WARRANTY; without even the implied warranty of
+//     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//     GNU General Public License for more details.
+
+//  See <https://www.gnu.org/licenses/> for GNU General Public License
+
+// Contact me at mark@xengineering.net
+
+//By using this device, you agree to XEngineering’s Terms and Conditions:
+// https://xengineering.net/terms-and-conditions/
+
+//Profiling system
+// Call every 30 seconds to see performance trends
+setInterval(showPerformanceReport, 30000);
+const ENABLE_DETAILED_PROFILING = true;
+let performanceMetrics = {
+    plotUpdates: [],
+    domUpdates: [],
+    echoUpdates: [],
+    dataProcessing: []
+};
+
+// To add/remove Unix time labels on X axis.  No labels = cleaner render
+// Time axis mode toggle
+let useTimestamps = false; // Default to relative time (faster)
+let timeAxisModeChanging = false; // Prevent conflicts during switch
 
 
+
+function toggleTimeAxisMode(checkbox) {
+    if (timeAxisModeChanging) return;
+
+    timeAxisModeChanging = true;
+
+    // Update the local variable immediately (don't wait for ESP32)
+    useTimestamps = checkbox.checked;
+
+    console.log(`Switching to ${useTimestamps ? 'timestamp' : 'relative time'} mode`);
+
+    // Reinitialize data structures with new mode
+    initPlotDataStructures();
+
+    // Destroy and recreate all plots with new configuration
+    if (currentTempPlot) { currentTempPlot.destroy(); initCurrentTempPlot(); }
+    if (voltagePlot) { voltagePlot.destroy(); initVoltagePlot(); }
+    if (rpmPlot) { rpmPlot.destroy(); initRPMPlot(); }
+    if (temperaturePlot) { temperaturePlot.destroy(); initTemperaturePlot(); }
+
+    //Reinitialize X-axis data for the new mode
+    reinitializeXAxisForNewMode();
+
+    timeAxisModeChanging = false;
+
+}
+
+//helper function
+function reinitializeXAxisForNewMode() {
+    // Get current interval from the last known data or use default
+    const intervalMs = window._lastKnownInterval || 200; // fallback to 200ms
+    const intervalSec = intervalMs / 1000;
+
+    if (useTimestamps) {
+        // SWITCHING TO TIMESTAMP MODE
+        console.log("Initializing X-axis with timestamps");
+        const now = Math.floor(Date.now() / 1000);
+
+        // Initialize all plot X-axes with proper timestamps going back in time
+        if (currentTempData && currentTempData[0]) {
+            for (let i = 0; i < currentTempData[0].length; i++) {
+                currentTempData[0][i] = now - (currentTempData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (voltageData && voltageData[0]) {
+            for (let i = 0; i < voltageData[0].length; i++) {
+                voltageData[0][i] = now - (voltageData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (rpmData && rpmData[0]) {
+            for (let i = 0; i < rpmData[0].length; i++) {
+                rpmData[0][i] = now - (rpmData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (temperatureData && temperatureData[0]) {
+            for (let i = 0; i < temperatureData[0].length; i++) {
+                temperatureData[0][i] = now - (temperatureData[0].length - 1 - i) * intervalSec;
+            }
+        }
+    } else {
+        // SWITCHING TO RELATIVE MODE
+        console.log("Initializing X-axis with relative time");
+
+        // Initialize all plot X-axes with relative time (seconds ago)
+        if (currentTempData && currentTempData[0]) {
+            for (let i = 0; i < currentTempData[0].length; i++) {
+                currentTempData[0][i] = -(currentTempData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (voltageData && voltageData[0]) {
+            for (let i = 0; i < voltageData[0].length; i++) {
+                voltageData[0][i] = -(voltageData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (rpmData && rpmData[0]) {
+            for (let i = 0; i < rpmData[0].length; i++) {
+                rpmData[0][i] = -(rpmData[0].length - 1 - i) * intervalSec;
+            }
+        }
+
+        if (temperatureData && temperatureData[0]) {
+            for (let i = 0; i < temperatureData[0].length; i++) {
+                temperatureData[0][i] = -(temperatureData[0].length - 1 - i) * intervalSec;
+            }
+        }
+    }
+}
+
+
+
+// Plot Rendering Tracker -
+let plotRenderTracker = {
+    interval: 10000, // 10 seconds
+    startTime: performance.now(),
+    lastReportTime: performance.now(),
+
+    // Per-plot counters
+    plots: {
+        current: { count: 0, totalTime: 0, maxTime: 0 },
+        voltage: { count: 0, totalTime: 0, maxTime: 0 },
+        rpm: { count: 0, totalTime: 0, maxTime: 0 },
+        temperature: { count: 0, totalTime: 0, maxTime: 0 }
+    },
+
+    // Overall stats
+    totalRenderTime: 0,
+    peakRenderTime: 0,
+    dataPointsProcessed: 0,
+    queueCalls: 0
+};
+
+function reportPlotRenderingStats() {
+    const now = performance.now();
+    const intervalMs = now - plotRenderTracker.lastReportTime;
+    const intervalSec = intervalMs / 1000;
+
+    // Calculate stats for each plot
+    const plotStats = {};
+    let totalUpdates = 0;
+
+    Object.entries(plotRenderTracker.plots).forEach(([name, plot]) => {
+        const avgTime = plot.count > 0 ? (plot.totalTime / plot.count) : 0;
+        plotStats[name] = {
+            count: plot.count,
+            avgTime: avgTime,
+            maxTime: plot.maxTime,
+            frequency: plot.count / intervalSec
+        };
+        totalUpdates += plot.count;
+    });
+
+    // Calculate overall metrics
+    const totalRenderPercent = (plotRenderTracker.totalRenderTime / intervalMs) * 100;
+    const avgDataRate = plotRenderTracker.dataPointsProcessed / intervalSec;
+    const queueEfficiency = totalUpdates > 0 ? (totalUpdates / plotRenderTracker.queueCalls * 100) : 0;
+
+    // Format the report
+    const statsText = Object.entries(plotStats)
+        .map(([name, stats]) =>
+            `${name.charAt(0).toUpperCase()}=${stats.count} (${stats.avgTime.toFixed(1)}ms avg, ${stats.frequency.toFixed(1)}/s)`
+        ).join(', ');
+
+    console.log(`[PLOT RENDER REPORT] ${intervalSec.toFixed(1)}s: ${statsText} | Total: ${totalRenderPercent.toFixed(1)}% render time | Peak: ${plotRenderTracker.peakRenderTime.toFixed(1)}ms | Data: ${avgDataRate.toFixed(1)}/s | Queue eff: ${queueEfficiency.toFixed(0)}%`);
+
+    // Reset counters for next interval
+    Object.values(plotRenderTracker.plots).forEach(plot => {
+        plot.count = 0;
+        plot.totalTime = 0;
+        plot.maxTime = 0;
+    });
+
+    plotRenderTracker.totalRenderTime = 0;
+    plotRenderTracker.peakRenderTime = 0;
+    plotRenderTracker.dataPointsProcessed = 0;
+    plotRenderTracker.queueCalls = 0;
+    plotRenderTracker.lastReportTime = now;
+}
+
+// Plot Y-axis limits (I am ready to make configurable from ESP32!)
+let Ymin1 = -20, Ymax1 = 20; // Current plot
+let Ymin2 = -20, Ymax2 = 20; // Voltage plot  
+let Ymin3 = -20, Ymax3 = 20; // RPM plot
+let Ymin4 = -20, Ymax4 = 20; // Temperature plot
+
+// Circular buffer indices for efficiency
+let currentTempIndex = 0;
+let voltageIndex = 0;
+let rpmIndex = 0;
+let temperatureIndex = 0;
+
+// Pre-calculated X-axis arrays
+let xAxisData = [];
+
+// Efficient circular buffer structure - no timestamps needed
+let currentTempData, voltageData, rpmData, temperatureData;
+
+//from chatgpt: Every call to init*Plot() attaches a new ResizeObserver with a 1000 ms debounce. 
+//But these functions are reentrant if called twice, and you don't unregister observers. This can stack up and cause redundant resizing logic at runtime.
+//Fix: Store and disconnect previous observers before creating new ones.
+let currentTempResizeObserver = null;
+let voltageResizeObserver = null;
+let rpmResizeObserver = null;
+let temperatureResizeObserver = null;
+
+let currentTempPlot;
+let voltagePlot;
+let rpmPlot;
+let temperaturePlot;
+
+
+// Plot update batching system
+const plotUpdateQueue = new Set();
+let plotUpdateScheduled = false;
+
+
+function queuePlotUpdate(plotName) {
+    // Lightweight tracking - just increment counter
+    plotRenderTracker.queueCalls++;
+
+    plotUpdateQueue.add(plotName);
+
+    if (!plotUpdateScheduled) {
+        plotUpdateScheduled = true;
+        requestAnimationFrame(() => {
+            // Track render start
+            const totalStart = performance.now();
+
+            if (plotUpdateQueue.has('current') && currentTempPlot) {
+                const start = performance.now();
+                currentTempPlot.setData(currentTempData);
+                const duration = performance.now() - start;
+
+                // Update tracker (minimal overhead)
+                const plot = plotRenderTracker.plots.current;
+                plot.count++;
+                plot.totalTime += duration;
+                plot.maxTime = Math.max(plot.maxTime, duration);
+            }
+
+            if (plotUpdateQueue.has('voltage') && voltagePlot) {
+                const start = performance.now();
+                voltagePlot.setData(voltageData);
+                const duration = performance.now() - start;
+
+                const plot = plotRenderTracker.plots.voltage;
+                plot.count++;
+                plot.totalTime += duration;
+                plot.maxTime = Math.max(plot.maxTime, duration);
+            }
+
+            if (plotUpdateQueue.has('rpm') && rpmPlot) {
+                const start = performance.now();
+                rpmPlot.setData(rpmData);
+                const duration = performance.now() - start;
+
+                const plot = plotRenderTracker.plots.rpm;
+                plot.count++;
+                plot.totalTime += duration;
+                plot.maxTime = Math.max(plot.maxTime, duration);
+            }
+
+            if (plotUpdateQueue.has('temperature') && temperaturePlot) {
+                const start = performance.now();
+                temperaturePlot.setData(temperatureData);
+                const duration = performance.now() - start;
+
+                const plot = plotRenderTracker.plots.temperature;
+                plot.count++;
+                plot.totalTime += duration;
+                plot.maxTime = Math.max(plot.maxTime, duration);
+            }
+
+            const totalDuration = performance.now() - totalStart;
+
+            // Update overall tracker
+            plotRenderTracker.totalRenderTime += totalDuration;
+            plotRenderTracker.peakRenderTime = Math.max(plotRenderTracker.peakRenderTime, totalDuration);
+
+            plotUpdateQueue.clear();
+            plotUpdateScheduled = false;
+        });
+    }
+}
+
+//ota update stuff
+
+// Software Update functionality
+let availableVersions = {};
+
+// Load available versions from server
+function loadAvailableVersions() {
+    // Require unlock first
+    if (!currentAdminPassword) {
+        alert('Please unlock settings first (enter admin password)');
+        return;
+    }
+
+    const versionList = document.getElementById('version-list');
+    const versionLoading = document.getElementById('version-loading');
+
+    if (window._lastKnownMode === 1) { // MODE_AP
+        document.getElementById('version-loading').style.display = 'block';
+        document.getElementById('version-loading').innerHTML =
+            '<div style="color: #ff9800; text-align: center; padding: 20px;">' +
+            'Software updates unavailable in AP mode<br>' +
+            '<small>Connect device to ship\'s WiFi for updates</small>' +
+            '</div>';
+        document.getElementById('version-list').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('version-loading').style.display = 'block';
+    document.getElementById('version-list').style.display = 'none';
+
+    fetch('https://ota.xengineering.net/api/firmware/versions.php')
+        .then(response => response.json())
+        .then(data => {
+            availableVersions = data.versions || {};
+            displayAvailableVersions();
+        })
+        .catch(error => {
+            console.error('Error loading versions:', error);
+            document.getElementById('version-loading').innerHTML =
+                '<div style="color: red;">Error loading versions. Check internet connection.</div>';
+        });
+}
+
+function getStoredPassword() {
+    // Get password from an existing form that already has it populated
+    const existingPasswordField = document.querySelector('.password_field');
+    return existingPasswordField ? existingPasswordField.value : '';
+}
+// Display available versions
+function displayAvailableVersions() {
+    const versionList = document.getElementById('version-list');
+    const versionLoading = document.getElementById('version-loading');
+
+    if (Object.keys(availableVersions).length === 0) {
+        versionLoading.innerHTML = '<div>No versions available</div>';
+        return;
+    }
+
+    // Get current version for comparison
+    const currentVersionStr = document.getElementById('current-version-display').textContent;
+
+    // Filter out the current version, but allow all others (including downgrades)
+    const sortedVersions = Object.keys(availableVersions)
+        .filter(version => version !== currentVersionStr)
+        .sort((a, b) => {
+            // Parse version strings like "0.2.12" into comparable numbers
+            const parseVersion = (v) => {
+                const parts = v.split('.').map(Number);
+                return parts[0] * 1000000 + parts[1] * 1000 + parts[2];
+            };
+            return parseVersion(b) - parseVersion(a); // Sort descending (highest first)
+        });
+
+    if (sortedVersions.length === 0) {
+        versionLoading.innerHTML = '<div>No other versions available</div>';
+        return;
+    }
+
+    let html = '<div style="margin: 10px 0;">Click a version to update:</div>';
+    sortedVersions.forEach(version => {
+        const versionData = availableVersions[version];
+        const notes = versionData.notes || 'No description available';
+        const size = versionData.file_size ? (versionData.file_size / (1024 * 1024)).toFixed(1) + ' MB' : '';
+
+        html += `
+            <div style="border: 1px solid #ccc; margin: 10px 0; padding: 15px; border-radius: 5px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>Version ${version}</strong><br>
+                        <span style="color: #666; font-size: 0.9em;">${notes}</span><br>
+                        <span style="color: #888; font-size: 0.8em;">${size}</span>
+                    </div>
+                    <form action="/get" method="GET" target="hidden-form" onsubmit="return confirmUpdate('${version}')">
+                        <input type="hidden" name="password" value="${currentAdminPassword}">
+                        <input type="hidden" name="UpdateToVersion" value="${version}">
+                        <input type="submit" value="Change to ${version}" class="btn-primary">
+                    </form>
+                </div>
+            </div>
+        `;
+    });
+
+    versionLoading.style.display = 'none';
+    versionList.innerHTML = html;
+    versionList.style.display = 'block';
+}
+
+// Confirm update
+function confirmUpdate(version) {
+    // Password is guaranteed to exist because button can only be clicked after unlock
+    return confirm(`Update process takes 2-3 minutes and involves one or more auto re-boots.  Do not interfere.  When finished, web interface will be accessible in the usual way, and Software Update tab will show the new version # is active.  If process fails, you may try again with better internet.  If the whole thing bricks, you may start fresh with the factory golden image.`);
+}
+
+// Decode and display version/device ID from CSV data
+// Track previous values to detect changes
+let prevVersionInt = -1;
+let prevDeviceIdUpper = -1;
+let prevDeviceIdLower = -1;
+
+function updateVersionInfo() {
+    // Get current values
+    const versionInt = parseInt(document.getElementById('firmwareVersionIntID').textContent) || 0;
+    const deviceIdUpper = parseInt(document.getElementById('deviceIdUpperID').textContent) || 0;
+    const deviceIdLower = parseInt(document.getElementById('deviceIdLowerID').textContent) || 0;
+
+    // Only update if something changed
+    if (versionInt !== prevVersionInt || deviceIdUpper !== prevDeviceIdUpper || deviceIdLower !== prevDeviceIdLower) {
+
+        // Decode version
+        const major = Math.floor(versionInt / 10000);
+        const minor = Math.floor((versionInt % 10000) / 100);
+        const patch = versionInt % 100;
+        const versionStr = `${major}.${minor}.${patch}`;
+
+        // Decode device ID (12-char MAC)
+        const deviceIdHex = deviceIdUpper.toString(16).padStart(8, '0') +
+            deviceIdLower.toString(16).padStart(8, '0');
+        const macAddress = deviceIdHex.slice(4).toUpperCase();
+
+        // Update display
+        document.getElementById('current-version-display').textContent = versionStr;
+        document.getElementById('device-id-display').textContent = macAddress;
+
+        // Update previous values
+        prevVersionInt = versionInt;
+        prevDeviceIdUpper = deviceIdUpper;
+        prevDeviceIdLower = deviceIdLower;
+    }
+}
+
+
+//profiling stuff
+function profileOperation(operationName, fn) {
+    if (!ENABLE_DETAILED_PROFILING) return fn();
+
+    const startTime = performance.now();
+    const result = fn();
+    const duration = performance.now() - startTime;
+
+    if (duration > 1) { // Only log operations taking >1ms
+        if (!performanceMetrics[operationName]) {
+            performanceMetrics[operationName] = [];
+        }
+        performanceMetrics[operationName].push(duration);
+
+        // Keep only last 50 measurements
+        if (performanceMetrics[operationName].length > 50) {
+            performanceMetrics[operationName].shift();
+        }
+
+        console.log(`[PROF] ${operationName}: ${duration.toFixed(2)}ms`);
+    }
+
+    return result;
+}
+function showPerformanceReport() {
+    console.log('\n=== PERFORMANCE REPORT ===');
+    Object.entries(performanceMetrics).forEach(([operation, times]) => {
+        if (times.length > 0) {
+            const avg = times.reduce((a, b) => a + b) / times.length;
+            const max = Math.max(...times);
+            console.log(`${operation}: avg=${avg.toFixed(2)}ms, max=${max.toFixed(2)}ms, samples=${times.length}`);
+        }
+    });
+}
+// ECHO UPDATE - Only update changed values
+let lastEchoValues = new Map();
+
+function updateEchoIfChanged(elementId, newValue) {
+    const cacheKey = elementId;
+    const lastValue = lastEchoValues.get(cacheKey);
+
+    if (lastValue !== newValue) {
+        lastEchoValues.set(cacheKey, newValue);
+        const element = document.getElementById(elementId);
+        if (element) {  // Add this null check
+            element.textContent = newValue;
+        } else {
+            console.warn(`Element not found: ${elementId}`);  // Debug which element is missing
+        }
+        return true;
+    }
+    return false;
+}
+
+function startFrameTimeMonitoring() {
+    function frame() {
+        trackFrameTime();
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+}
+
+//DOM Updates
+function scheduleDOMUpdateOptimized(elementId, newContent) {
+    // Check if content actually changed before scheduling
+    const element = document.getElementById(elementId);
+    if (element && element.textContent === newContent) {
+        return false; // No change needed
+    }
+
+    pendingDOMUpdates.set(elementId, newContent);
+
+    if (!domUpdateScheduled) {
+        domUpdateScheduled = true;
+        requestAnimationFrame(() => {
+            profileOperation('domUpdates', () => {
+                let updateCount = 0;
+                for (const [id, content] of pendingDOMUpdates) {
+                    const element = document.getElementById(id);
+                    if (element && element.textContent !== content) {
+                        element.textContent = content;
+                        updateCount++;
+                    }
+                }
+                // console.log(`[PROF] DOM updates: ${updateCount} elements updated`);
+            });
+
+            pendingDOMUpdates.clear();
+            domUpdateScheduled = false;
+        });
+    }
+    return true; // Update scheduled
+}
+
+// PERFORMANCE MONITORING
+let frameTimeTracker = {
+    lastFrameTime: performance.now(),
+    frameTimes: [],
+    worstFrame: 0
+};
+
+function trackFrameTime() {
+    const now = performance.now();
+    const frameTime = now - frameTimeTracker.lastFrameTime;
+    frameTimeTracker.lastFrameTime = now;
+
+    if (frameTimeTracker.frameTimes.length > 0) { // Skip first frame
+        frameTimeTracker.frameTimes.push(frameTime);
+        frameTimeTracker.worstFrame = Math.max(frameTimeTracker.worstFrame, frameTime);
+
+        // Keep last 100 frames
+        if (frameTimeTracker.frameTimes.length > 100) {
+            frameTimeTracker.frameTimes.shift();
+        }
+
+        // Log if frame took too long
+        if (frameTime > 20) { // More than 20ms = under 50fps
+            console.warn(`[PERF] Slow frame: ${frameTime.toFixed(2)}ms`);
+        }
+    }
+}
+
+//globals for axes configuration from ESP32
+const CONFIG_CHECK_INTERVAL_SECONDS = 1.0;  // How often to check for config changes (seconds)
+
+// Cache variables for change detection
+let cachedPlotTimeWindow = null;
+let cachedWebgaugesInterval = null;
+let cachedYmin1 = null, cachedYmax1 = null;
+let cachedYmin2 = null, cachedYmax2 = null;
+let cachedYmin3 = null, cachedYmax3 = null;
+let cachedYmin4 = null, cachedYmax4 = null;
+
+// Counters for timing
+let configCheckCounter = 0;
+// Function to calculate how many loops equal the config check interval
+function getConfigCheckInterval(webgaugesIntervalMs) {
+    if (!webgaugesIntervalMs || webgaugesIntervalMs <= 0) return 5; // fallback
+    return Math.max(1, Math.round((CONFIG_CHECK_INTERVAL_SECONDS * 1000) / webgaugesIntervalMs));
+}
+
+// wrapper function
+function processCSVDataOptimized(data) {
+    return profileOperation('dataProcessing', () => {
+
+        // Increment data points counter
+        plotRenderTracker.dataPointsProcessed++;
+
+        // Batch all plot updates
+        const plotUpdates = [];
+        const now = useTimestamps ? Math.floor(Date.now() / 1000) : null;
+
+        // ALWAYS UPDATE DATA STRUCTURES - Current/Temperature plot data
+        const battCurrent = 'Bcur' in data ? parseFloat(data.Bcur) / 100 : 0;
+        const altCurrent = 'MeasuredAmps' in data ? parseFloat(data.MeasuredAmps) / 100 : 0;
+        const fieldCurrent = 'iiout' in data ? parseFloat(data.iiout) / 10 : 0;
+
+        // Shift all current data left and add new data at the end
+        for (let i = 1; i < currentTempData[1].length; i++) {
+            if (useTimestamps) {
+                currentTempData[0][i - 1] = currentTempData[0][i]; // Shift timestamps
+            }
+            currentTempData[1][i - 1] = currentTempData[1][i];
+            currentTempData[2][i - 1] = currentTempData[2][i];
+            currentTempData[3][i - 1] = currentTempData[3][i];
+        }
+        // Add new current data at the end (rightmost position)
+        const lastCurrentIndex = currentTempData[1].length - 1;
+        if (useTimestamps) {
+            currentTempData[0][lastCurrentIndex] = now; // New timestamp
+        }
+        currentTempData[1][lastCurrentIndex] = battCurrent;
+        currentTempData[2][lastCurrentIndex] = altCurrent;
+        currentTempData[3][lastCurrentIndex] = fieldCurrent;
+
+        // Only update visual plot if it exists
+        if (typeof currentTempPlot !== 'undefined') {
+            plotUpdates.push('current');
+        }
+
+        // ALWAYS UPDATE DATA STRUCTURES - Voltage plot data
+        const adsBattV = 'BatteryV' in data ? parseFloat(data.BatteryV) / 100 : 0;
+        const inaBattV = 'IBV' in data ? parseFloat(data.IBV) / 100 : 0;
+
+        // Shift all voltage data left and add new data at the end
+        for (let i = 1; i < voltageData[1].length; i++) {
+            if (useTimestamps) {
+                voltageData[0][i - 1] = voltageData[0][i]; // Shift timestamps
+            }
+            voltageData[1][i - 1] = voltageData[1][i];
+            voltageData[2][i - 1] = voltageData[2][i];
+        }
+        const lastVoltageIndex = voltageData[1].length - 1;
+        if (useTimestamps) {
+            voltageData[0][lastVoltageIndex] = now; // New timestamp
+        }
+        voltageData[1][lastVoltageIndex] = adsBattV;
+        voltageData[2][lastVoltageIndex] = inaBattV;
+
+        // Only update visual plot if it exists
+        if (typeof voltagePlot !== 'undefined') {
+            plotUpdates.push('voltage');
+        }
+
+        // ALWAYS UPDATE DATA STRUCTURES - RPM plot data
+        const rpmValue = 'RPM' in data ? parseFloat(data.RPM) : 0;
+
+        // Shift all RPM data left and add new data at the end
+        for (let i = 1; i < rpmData[1].length; i++) {
+            if (useTimestamps) {
+                rpmData[0][i - 1] = rpmData[0][i]; // Shift timestamps
+            }
+            rpmData[1][i - 1] = rpmData[1][i];
+        }
+        const lastRPMIndex = rpmData[1].length - 1;
+        if (useTimestamps) {
+            rpmData[0][lastRPMIndex] = now; // New timestamp
+        }
+        rpmData[1][lastRPMIndex] = rpmValue;
+
+        // Only update visual plot if it exists
+        if (typeof rpmPlot !== 'undefined') {
+            plotUpdates.push('rpm');
+        }
+
+        // ALWAYS UPDATE DATA STRUCTURES - Temperature plot data
+        const altTemp = 'AlternatorTemperatureF' in data ? parseFloat(data.AlternatorTemperatureF) : 0;
+
+        // Shift all temperature data left and add new data at the end
+        for (let i = 1; i < temperatureData[1].length; i++) {
+            if (useTimestamps) {
+                temperatureData[0][i - 1] = temperatureData[0][i]; // Shift timestamps
+            }
+            temperatureData[1][i - 1] = temperatureData[1][i];
+        }
+        const lastTempIndex = temperatureData[1].length - 1;
+        if (useTimestamps) {
+            temperatureData[0][lastTempIndex] = now; // New timestamp
+        }
+        temperatureData[1][lastTempIndex] = altTemp;
+
+        // Only update visual plot if it exists
+        if (typeof temperaturePlot !== 'undefined') {
+            plotUpdates.push('temperature');
+        }
+
+        // Queue all plot updates at once (only for existing plots)
+        plotUpdates.forEach(plotName => queuePlotUpdate(plotName));
+
+        return plotUpdates.length;
+    });
+}
+
+
+
+// Function to update plot configuration when parameters change
+function updatePlotConfiguration(data) {
+
+
+
+    let configChanged = false;
+
+    // Check for any axis limit changes
+    const axisChanged = (data.Ymin1 !== cachedYmin1 || data.Ymax1 !== cachedYmax1 ||
+        data.Ymin2 !== cachedYmin2 || data.Ymax2 !== cachedYmax2 ||
+        data.Ymin3 !== cachedYmin3 || data.Ymax3 !== cachedYmax3 ||
+        data.Ymin4 !== cachedYmin4 || data.Ymax4 !== cachedYmax4);
+
+    if (axisChanged) {
+        //  console.log('AXIS LIMITS CHANGED - Recreating plots');
+
+        // Update all global axis variables
+        Ymin1 = data.Ymin1; Ymax1 = data.Ymax1;
+        Ymin2 = data.Ymin2; Ymax2 = data.Ymax2;
+        Ymin3 = data.Ymin3; Ymax3 = data.Ymax3;
+        Ymin4 = data.Ymin4; Ymax4 = data.Ymax4;
+
+        // Update cached values
+        cachedYmin1 = data.Ymin1; cachedYmax1 = data.Ymax1;
+        cachedYmin2 = data.Ymin2; cachedYmax2 = data.Ymax2;
+        cachedYmin3 = data.Ymin3; cachedYmax3 = data.Ymax3;
+        cachedYmin4 = data.Ymin4; cachedYmax4 = data.Ymax4;
+
+        // Destroy and recreate all plots
+        if (currentTempPlot) { currentTempPlot.destroy(); initCurrentTempPlot(); }
+        if (voltagePlot) { voltagePlot.destroy(); initVoltagePlot(); }
+        if (rpmPlot) { rpmPlot.destroy(); initRPMPlot(); }
+        if (temperaturePlot) { temperaturePlot.destroy(); initTemperaturePlot(); }
+
+        configChanged = true;
+    }
+
+    // Check for buffer size changes (requires fresh start)
+    if (data.plotTimeWindow !== cachedPlotTimeWindow ||
+        data.webgaugesinterval !== cachedWebgaugesInterval) {
+
+        cachedPlotTimeWindow = data.plotTimeWindow;
+        cachedWebgaugesInterval = data.webgaugesinterval;
+
+        // Reinitialize plots with new timing parameters
+        reinitializePlotsWithNewTiming(data);
+
+        // Destroy and recreate all plots to fix X-axis labels
+        if (currentTempPlot) { currentTempPlot.destroy(); initCurrentTempPlot(); }
+        if (voltagePlot) { voltagePlot.destroy(); initVoltagePlot(); }
+        if (rpmPlot) { rpmPlot.destroy(); initRPMPlot(); }
+        if (temperaturePlot) { temperaturePlot.destroy(); initTemperaturePlot(); }
+
+        configChanged = true;
+    }
+
+    if (configChanged) {
+        //  console.log('Plot configuration updated');
+    }
+}
+
+// Function to reinitialize plots when timing parameters change
+function reinitializePlotsWithNewTiming(data) {
+    // Calculate new buffer size
+    const newMaxPoints = Math.ceil((data.plotTimeWindow * 1000) / data.webgaugesinterval);
+    const now = Math.floor(Date.now() / 1000);
+    const intervalSec = data.webgaugesinterval / 1000;
+
+    // Recalculate X-axis (timestamps going back in time)
+    xAxisData = [];
+    if (useTimestamps) {
+        const now = Math.floor(Date.now() / 1000);
+        for (let i = 0; i < newMaxPoints; i++) {
+            xAxisData[i] = now - (newMaxPoints - 1 - i) * intervalSec;
+        }
+    } else {
+        for (let i = 0; i < newMaxPoints; i++) {
+            xAxisData[i] = -(newMaxPoints - 1 - i) * intervalSec;
+        }
+    }
+
+    // Reinitialize circular buffers with new size
+    currentTempData = [
+        [...xAxisData], // X values (timestamps)
+        new Array(newMaxPoints).fill(0), // Battery current
+        new Array(newMaxPoints).fill(0), // Alt current  
+        new Array(newMaxPoints).fill(0)  // Field current
+    ];
+
+    voltageData = [
+        [...xAxisData], // X values
+        new Array(newMaxPoints).fill(0), // ADS voltage
+        new Array(newMaxPoints).fill(0)  // INA voltage
+    ];
+
+    rpmData = [
+        [...xAxisData], // X values
+        new Array(newMaxPoints).fill(0)  // RPM
+    ];
+
+    temperatureData = [
+        [...xAxisData], // X values  
+        new Array(newMaxPoints).fill(0)  // Temperature
+    ];
+
+    // Reset circular buffer indices
+    currentTempIndex = 0;
+    voltageIndex = 0;
+    rpmIndex = 0;
+    temperatureIndex = 0;
+
+    // Update plots - they'll auto-scale with time: true
+    if (currentTempPlot) {
+        currentTempPlot.setData(currentTempData);
+    }
+    if (voltagePlot) {
+        voltagePlot.setData(voltageData);
+    }
+    if (rpmPlot) {
+        rpmPlot.setData(rpmData);
+    }
+    if (temperaturePlot) {
+        temperaturePlot.setData(temperatureData);
+    }
+
+    console.log(`Plots reinitialized: ${newMaxPoints} points, ${data.plotTimeWindow / 1000}s window`);
+}
+
+
+// Function to update all echo values
+function updateAllEchosOptimized(data) {
+    return profileOperation('echoUpdates', () => {
+        let updatesCount = 0;
+
+        // All echo updates with change detection 
+        const echoUpdates = [
+            { key: 'TemperatureLimitF', id: 'TemperatureLimitF_echo', transform: v => v },
+            { key: 'BulkVoltage', id: 'BulkVoltage_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'TargetAmps', id: 'TargetAmps_echo', transform: v => v },
+            { key: 'FloatVoltage', id: 'FloatVoltage_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'SwitchingFrequency', id: 'SwitchingFrequency_echo', transform: v => v },
+            { key: 'dutyStep', id: 'dutyStep_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'FieldAdjustmentInterval', id: 'FieldAdjustmentInterval_echo', transform: v => v },
+            { key: 'ManualDutyTarget', id: 'ManualDutyTarget_echo', transform: v => v },
+            { key: 'SwitchControlOverride', id: 'SwitchControlOverride_echo', transform: v => v },
+            { key: 'OnOff', id: 'OnOff_echo', transform: v => v },
+            { key: 'ManualFieldToggle', id: 'ManualFieldToggle_echo', transform: v => v },
+            { key: 'HiLow', id: 'HiLow_echo', transform: v => v },
+            { key: 'LimpHome', id: 'LimpHome_echo', transform: v => v },
+            { key: 'VeData', id: 'VeData_echo', transform: v => v },
+            { key: 'NMEA0183Data', id: 'NMEA0183Data_echo', transform: v => v },
+            { key: 'NMEA2KData', id: 'NMEA2KData_echo', transform: v => v },
+            { key: 'TargetAmpL', id: 'TargetAmpL_echo', transform: v => v },
+            { key: 'CurrentThreshold', id: 'CurrentThreshold_echo', transform: v => v / 100 },
+            { key: 'PeukertExponent', id: 'PeukertExponent_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'ChargeEfficiency', id: 'ChargeEfficiency_echo', transform: v => v + '%' },
+            { key: 'ChargedVoltage', id: 'ChargedVoltage_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'TailCurrent', id: 'TailCurrent_echo', transform: v => v },
+            { key: 'ChargedDetectionTime', id: 'ChargedDetectionTime_echo', transform: v => v },
+            { key: 'IgnoreTemperature', id: 'IgnoreTemperature_echo', transform: v => v },
+            { key: 'bmsLogic', id: 'bmsLogic_echo', transform: v => v },
+            { key: 'bmsLogicLevelOff', id: 'bmsLogicLevelOff_echo', transform: v => v },
+            { key: 'AlarmActivate', id: 'AlarmActivate_echo', transform: v => v },
+            { key: 'TempAlarm', id: 'TempAlarm_echo', transform: v => v },
+            { key: 'VoltageAlarmHigh', id: 'VoltageAlarmHigh_echo', transform: v => v },
+            { key: 'VoltageAlarmLow', id: 'VoltageAlarmLow_echo', transform: v => v },
+            { key: 'CurrentAlarmHigh', id: 'CurrentAlarmHigh_echo', transform: v => v },
+            { key: 'FourWay', id: 'FourWay_echo', transform: v => v },
+            { key: 'RPMScalingFactor', id: 'RPMScalingFactor_echo', transform: v => v },
+            { key: 'ResetTemp', id: 'ResetTemp_echo', transform: v => v },
+            { key: 'ResetVoltage', id: 'ResetVoltage_echo', transform: v => v },
+            { key: 'ResetCurrent', id: 'ResetCurrent_echo', transform: v => v },
+            { key: 'ResetEngineRunTime', id: 'ResetEngineRunTime_echo', transform: v => v },
+            { key: 'ResetAlternatorOnTime', id: 'ResetAlternatorOnTime_echo', transform: v => v },
+            { key: 'ResetEnergy', id: 'ResetEnergy_echo', transform: v => v },
+            { key: 'MaximumAllowedBatteryAmps', id: 'MaximumAllowedBatteryAmps_echo', transform: v => v },
+            { key: 'ManualSOCPoint', id: 'ManualSOCPoint_echo', transform: v => v },
+            { key: 'BatteryVoltageSource', id: 'BatteryVoltageSource_echo', transform: v => v },
+            { key: 'ShuntResistanceMicroOhm', id: 'ShuntResistanceMicroOhm_echo', transform: v => v },
+            { key: 'InvertAltAmps', id: 'InvertAltAmps_echo', transform: v => v },
+            { key: 'InvertBattAmps', id: 'InvertBattAmps_echo', transform: v => v },
+            { key: 'MaxDuty', id: 'MaxDuty_echo', transform: v => v },
+            { key: 'MinDuty', id: 'MinDuty_echo', transform: v => v },
+            { key: 'FieldResistance', id: 'FieldResistance_echo', transform: v => v },
+            { key: 'maxPoints', id: 'maxPoints_echo', transform: v => v },
+            { key: 'AlternatorCOffset', id: 'AlternatorCOffset_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'BatteryCOffset', id: 'BatteryCOffset_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'BatteryCapacity_Ah', id: 'BatteryCapacity_Ah_echo', transform: v => v },
+            { key: 'R_fixed', id: 'R_fixed_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'Beta', id: 'Beta_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'T0_C', id: 'T0_C_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'TempSource', id: 'TempSource_echo', transform: v => v },
+            { key: 'IgnitionOverride', id: 'IgnitionOverride_echo', transform: v => v },
+            { key: 'AmpSrc', id: 'AmpSrc_echo', transform: v => v },
+            { key: 'AlarmLatchEnabled', id: 'AlarmLatchEnabled_echo', transform: v => v },
+            { key: 'AlarmTest', id: 'AlarmTest_echo', transform: v => v },
+            { key: 'ResetAlarmLatch', id: 'ResetAlarmLatch_echo', transform: v => v },
+            { key: 'ForceFloat', id: 'ForceFloat_echo', transform: v => v },
+            { key: 'bulkCompleteTime', id: 'bulkCompleteTime_echo', transform: v => v },
+            { key: 'FLOAT_DURATION', id: 'FLOAT_DURATION_echo', transform: v => Math.round(v / 3600) },
+            { key: 'AutoShuntGainCorrection', id: 'AutoShuntGainCorrection_echo', transform: v => v },
+            { key: 'AutoAltCurrentZero', id: 'AutoAltCurrentZero_echo', transform: v => v },
+            { key: 'WindingTempOffset', id: 'WindingTempOffset_echo', transform: v => v },
+            { key: 'PulleyRatio', id: 'PulleyRatio_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'ManualLifePercentage', id: 'ManualLifePercentage_echo', transform: v => v },
+            { key: 'BatteryCurrentSource', id: 'BatteryCurrentSource_echo', transform: v => v },
+            { key: 'timeAxisModeChanging', id: 'timeAxisModeChanging_echo', transform: v => v },
+            { key: 'webgaugesinterval', id: 'webgaugesinterval_echo', transform: v => v },
+            { key: 'plotTimeWindow', id: 'plotTimeWindow_echo', transform: v => v },
+            { key: 'Ymin1', id: 'Ymin1_echo', transform: v => v },
+            { key: 'Ymax1', id: 'Ymax1_echo', transform: v => v },
+            { key: 'Ymin2', id: 'Ymin2_echo', transform: v => v },
+            { key: 'Ymax2', id: 'Ymax2_echo', transform: v => v },
+            { key: 'Ymin3', id: 'Ymin3_echo', transform: v => v },
+            { key: 'Ymax3', id: 'Ymax3_echo', transform: v => v },
+            { key: 'Ymin4', id: 'Ymin4_echo', transform: v => v },
+            { key: 'Ymax4', id: 'Ymax4_echo', transform: v => v },
+            { key: 'weatherModeEnabled', id: 'weatherModeEnabled_echo', transform: v => v },
+            { key: 'SolarWatts', id: 'SolarWatts_echo', transform: v => v },
+            { key: 'performanceRatio', id: 'performanceRatio_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'UVThresholdHigh', id: 'UVThresholdHigh_echo', transform: v => v },
+            // PID Learning System echo updates (add these to the echoUpdates array)
+            { key: 'LearningMode', id: 'LearningMode_echo', transform: v => v },
+            { key: 'LearningPaused', id: 'LearningPaused_echo', transform: v => v },
+            { key: 'LearningDryRunMode', id: 'LearningDryRunMode_echo', transform: v => v },
+            { key: 'LearningUpwardEnabled', id: 'LearningUpwardEnabled_echo', transform: v => v },
+            { key: 'LearningDownwardEnabled', id: 'LearningDownwardEnabled_echo', transform: v => v },
+            { key: 'EnableNeighborLearning', id: 'EnableNeighborLearning_echo', transform: v => v },
+            { key: 'AutoSaveLearningTable', id: 'AutoSaveLearningTable_echo', transform: v => v },
+            { key: 'ShowLearningDebugMessages', id: 'ShowLearningDebugMessages_echo', transform: v => v },
+            { key: 'EXTRA', id: 'EXTRA_echo', transform: v => v },
+            { key: 'AlternatorNominalAmps', id: 'AlternatorNominalAmps_echo', transform: v => v },
+            { key: 'LearningUpStep', id: 'LearningUpStep_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'LearningDownStep', id: 'LearningDownStep_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'MinLearningInterval', id: 'MinLearningInterval_echo', transform: v => (v / 1000).toFixed(2) },
+            { key: 'SafeOperationThreshold', id: 'SafeOperationThreshold_echo', transform: v => (v / 1000).toFixed(2) },
+            { key: 'PidKp', id: 'PidKp_echo', transform: v => (v / 1000).toFixed(3) },
+            { key: 'PidKi', id: 'PidKi_echo', transform: v => (v / 1000).toFixed(3) },
+            { key: 'PidKd', id: 'PidKd_echo', transform: v => (v / 1000).toFixed(3) },
+            { key: 'PidSampleTime', id: 'PidSampleTime_echo', transform: v => v },
+            { key: 'IgnoreLearningDuringPenalty', id: 'IgnoreLearningDuringPenalty_echo', transform: v => v },
+            { key: 'AmbientTempCorrectionFactor', id: 'AmbientTempCorrectionFactor_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'AmbientTempBaseline', id: 'AmbientTempBaseline_echo', transform: v => v },
+            { key: 'MaxTableValue', id: 'MaxTableValue_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'MinTableValue', id: 'MinTableValue_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'MaxPenaltyPercent', id: 'MaxPenaltyPercent_echo', transform: v => (v / 100).toFixed(2) },
+            { key: 'MaxPenaltyDuration', id: 'MaxPenaltyDuration_echo', transform: v => v },
+            { key: 'NeighborLearningFactor', id: 'NeighborLearningFactor_echo', transform: v => (v / 1000).toFixed(3) },
+            { key: 'LearningRPMSpacing', id: 'LearningRPMSpacing_echo', transform: v => v },
+            { key: 'LearningTableSaveInterval', id: 'LearningTableSaveInterval_echo', transform: v => v },
+            { key: 'pidInput', id: 'pidInput_display', transform: v => (v / 100).toFixed(1) },
+            { key: 'pidSetpoint', id: 'pidSetpoint_display', transform: v => (v / 100).toFixed(1) },
+            { key: 'pidOutput', id: 'pidOutput_display', transform: v => (v / 100).toFixed(1) }
+
+        ];
+
+        // Special display elements (not echos but similar update pattern)
+        const specialDisplays = [
+            { key: 'DynamicShuntGainFactor', id: 'DynamicShuntGainFactor_display', transform: v => (v / 1000).toFixed(3) },
+            { key: 'DynamicAltCurrentZero', id: 'DynamicAltCurrentZero_display', transform: v => (v / 1000).toFixed(3) + ' A' },
+            { key: 'totalPowerCycles', id: 'totalPowerCyclesID', transform: v => v },
+            {
+                key: 'AlarmLatchState',
+                id: 'AlarmLatchState_display',
+                transform: v => v,
+                special: (el, value) => {
+                    if (value === 1) {
+                        el.textContent = 'LATCHED';
+                        el.style.color = '#ff0000';
+                    } else {
+                        el.textContent = 'Normal';
+                        el.style.color = 'var(--accent)';
+                    }
+                }
+            }
+        ];
+
+        // Update only changed echo values
+        echoUpdates.forEach(update => {
+            if (update.key in data) {
+                const newValue = update.transform(data[update.key]);
+                if (updateEchoIfChanged(update.id, newValue)) {
+                    updatesCount++;
+                }
+            }
+        });
+
+        // Update special displays
+        specialDisplays.forEach(display => {
+            if (display.key in data) {
+                const el = document.getElementById(display.id);
+                if (el) {
+                    if (display.special) {
+                        display.special(el, data[display.key]);
+                        updatesCount++;
+                    } else {
+                        const newValue = display.transform(data[display.key]);
+                        if (updateEchoIfChanged(display.id, newValue)) {
+                            updatesCount++;
+                        }
+                    }
+                }
+            }
+        });
+
+        //  console.log(`[PROF] Echo updates: ${updatesCount} of ${echoUpdates.length + specialDisplays.length} elements changed`);
+        return updatesCount;
+    });
+}
+
+// end axes configuration functions
 let rpmAmpsInitialized = false; // this is for the RPM/AMP speed based charging table
 // for faster wifi reconnects after scheduled shut downs:
 let reconnectInterval;
@@ -20,7 +1044,30 @@ const connectionCheckInterval = 10000; // Check every 10 seconds
 
 // to prevent double toggling
 let toggleStates = {}; // Track current toggle states
-let userInitiatedToggles = new Set(); // Track user-initiated changes
+let userInitiatedToggles = new Map();
+let lastValues = new Map(); // Cache for DOM updates
+// DOM update batching system
+let pendingDOMUpdates = new Map();
+let domUpdateScheduled = false;
+
+function scheduleDOMUpdate(elementId, newContent) {
+    pendingDOMUpdates.set(elementId, newContent);
+
+    if (!domUpdateScheduled) {
+        domUpdateScheduled = true;
+        requestAnimationFrame(() => {
+
+            for (const [id, content] of pendingDOMUpdates) {
+                const element = document.getElementById(id);
+                if (element && element.textContent !== content) {
+                    element.textContent = content;
+                }
+            }
+            pendingDOMUpdates.clear();
+            domUpdateScheduled = false;
+        });
+    }
+}
 
 //feedback on button clicking
 function submitMessage() {
@@ -31,7 +1078,7 @@ function submitMessage() {
     }
 }
 
-//this allows user to turn the alternator OFF even without entering a passoword, for safety reasons
+//this allows user to turn the alternator OFF even without entering a passoword, for safety reasons, but not ON
 function handleAlternatorToggle(checkbox) {
     const isGoingOn = checkbox.checked; // true = turning ON, false = turning OFF
     const checkboxId = checkbox.id;
@@ -76,6 +1123,8 @@ function showSettingsAccess() {
 function lockSettingsManually() {
     const section = document.getElementById('settings-section');
     if (section) section.classList.add("locked");
+    const plotControls = document.getElementById('plots-controls');
+    if (plotControls) plotControls.classList.add("locked");
     // DON'T lock the header control - we want to allow turning OFF the alternator
     // const headerControl = document.querySelector('.alternator-control');
     // if (headerControl) headerControl.classList.add("locked");
@@ -88,6 +1137,10 @@ function lockSettingsManually() {
     }
     currentAdminPassword = "";
 }
+
+
+
+
 // Touch support: tap once to show tooltip, tap elsewhere to hide, for tooltips tool tip tooltip tips
 document.addEventListener("click", function (e) {
     document.querySelectorAll(".tooltip").forEach(el => el.classList.remove("active"));
@@ -112,13 +1165,7 @@ const resetReasonLookup = {
     8: "Other reset"
 };
 
-const wifiResetReasonLookup = {
-    0: "Unknown WiFi disconnect",
-    1: "WiFi signal lost",
-    2: "WiFi password problem",
-    3: "Can't connect to WiFi",
-    4: "Other WiFi issue"
-};
+
 
 function debounce(fn, delay) {
     let timer = null;
@@ -138,159 +1185,6 @@ function updatePasswordFields() {
     });
 }
 
-const fieldIndexes = {
-    AlternatorTemperatureF: 0,
-    DutyCycle: 1,
-    BatteryV: 2,
-    MeasuredAmps: 3,
-    RPM: 4,
-    Channel3V: 5,
-    IBV: 6,
-    Bcur: 7,
-    VictronVoltage: 8,
-    LoopTime: 9,
-    WifiStrength: 10,
-    WifiHeartBeat: 11,
-    SendWifiTime: 12,
-    AnalogReadTime: 13,
-    VeTime: 14,
-    MaximumLoopTime: 15,
-    HeadingNMEA: 16,
-    vvout: 17,
-    iiout: 18,
-    FreeHeap: 19,
-    IBVMax: 20,
-    MeasuredAmpsMax: 21,
-    RPMMax: 22,
-    SoC_percent: 23,
-    EngineRunTime: 24,
-    EngineCycles: 25,
-    AlternatorOnTime: 26,
-    AlternatorFuelUsed: 27,
-    ChargedEnergy: 28,
-    DischargedEnergy: 29,
-    AlternatorChargedEnergy: 30,
-    MaxAlternatorTemperatureF: 31,
-    TemperatureLimitF: 32,
-    FullChargeVoltage: 33,
-    TargetAmps: 34,
-    TargetFloatVoltage: 35,
-    SwitchingFrequency: 36,
-    interval: 37,
-    FieldAdjustmentInterval: 38,
-    ManualDuty: 39,
-    SwitchControlOverride: 40,
-    OnOff: 41,
-    ManualFieldToggle: 42,
-    HiLow: 43,
-    LimpHome: 44,
-    VeData: 45,
-    NMEA0183Data: 46,
-    NMEA2KData: 47,
-    TargetAmpL: 48,
-    CurrentThreshold: 49,
-    PeukertExponent: 50,
-    ChargeEfficiency: 51,
-    ChargedVoltage: 52,
-    TailCurrent: 53,
-    ChargedDetectionTime: 54,
-    IgnoreTemperature: 55,
-    BMSLogic: 56,
-    BMSLogicLevelOff: 57,
-    AlarmActivate: 58,
-    TempAlarm: 59,
-    VoltageAlarmHigh: 60,
-    VoltageAlarmLow: 61,
-    CurrentAlarmHigh: 62,
-    FourWay: 63,
-    RPMScalingFactor: 64,
-    ResetTemp: 65,
-    ResetVoltage: 66,
-    ResetCurrent: 67,
-    ResetEngineRunTime: 68,
-    ResetAlternatorOnTime: 69,
-    ResetEnergy: 70,
-    MaximumAllowedBatteryAmps: 71,
-    ManualSOCPoint: 72,
-    BatteryVoltageSource: 73,
-    AmpControlByRPM: 74,
-    RPM1: 75,
-    RPM2: 76,
-    RPM3: 77,
-    RPM4: 78,
-    Amps1: 79,
-    Amps2: 80,
-    Amps3: 81,
-    Amps4: 82,
-    RPM5: 83,
-    RPM6: 84,
-    RPM7: 85,
-    Amps5: 86,
-    Amps6: 87,
-    Amps7: 88,
-    ShuntResistanceMicroOhm: 89,
-    InvertAltAmps: 90,
-    InvertBattAmps: 91,
-    MaxDuty: 92,
-    MinDuty: 93,
-    FieldResistance: 94,
-    maxPoints: 95,
-    AlternatorCOffset: 96,
-    BatteryCOffset: 97,
-    BatteryCapacity_Ah: 98,
-    AmpSrc: 99,
-    R_fixed: 100,
-    Beta: 101,
-    T0_C: 102,
-    TempSource: 103,
-    IgnitionOverride: 104,
-    temperatureThermistor: 105,
-    MaxTemperatureThermistor: 106,
-    VictronCurrent: 107,
-    AlarmTest: 108,
-    AlarmLatchEnabled: 109,
-    AlarmLatchState: 110,
-    ResetAlarmLatch: 111,
-    ForceFloat: 112,
-    bulkCompleteTime: 113,
-    FLOAT_DURATION: 114,
-    LatitudeNMEA: 115,
-    LongitudeNMEA: 116,
-    SatelliteCountNMEA: 117,
-    GPIO33_Status: 118,
-    fieldActiveStatus: 119,
-    timeToFullChargeMin: 120,
-    timeToFullDischargeMin: 121,
-    AutoShuntGainCorrection: 122, // boolean
-    DynamicShuntGainFactor: 123, // actual factor
-    AutoAltCurrentZero: 124,     // boolean
-    DynamicAltCurrentZero: 125,  // actual factor
-    InsulationLifePercent: 126,
-    GreaseLifePercent: 127,
-    BrushLifePercent: 128,
-    PredictedLifeHours: 129,
-    LifeIndicatorColor: 130,
-    WindingTempOffset: 131,
-    PulleyRatio: 132,
-    LastSessionDuration: 133,
-    LastSessionMaxLoopTime: 134,
-    LastSessionMinHeap: 135,
-    WifiReconnectsThisSession: 136,
-    WifiReconnectsTotal: 137,
-    CurrentSessionDuration: 138,
-    CurrentWifiSessionDuration: 139,
-    LastResetReason: 140,          // Integer code
-    LastWifiResetReason: 141,       // Integer code
-    ManualLifePercentage: 142,
-    totalPowerCycles: 143,
-    lastWifiSessionDuration: 144,
-    lastSessionEndTime: 145,
-    BatteryCurrentSource: 146,  // NEW
-    InvertBatteryMonitorAmps: 147,  // NEW
-    webgaugesinterval: 148,  // NEW
-    plotTimeWindow: 149  // NEW
-
-};
 
 //Factory Reset Logic
 function factoryReset() {
@@ -330,8 +1224,9 @@ function factoryReset() {
 
     const confirmation = confirm(
         "⚠️ FACTORY RESET WARNING ⚠️\n\n" +
-        "This will restore settings to hardcoded defaults.\n" +
-        "All your custom configurations will be lost.\n\n" +
+        "This will restore settings to factory defaults.\n" +
+        "Device will restart.\n" +
+        "All your settings will be lost.\n\n" +
         "Are you sure you want to continue?"
     );
     if (!confirmation) return;
@@ -344,29 +1239,50 @@ function factoryReset() {
     const formData = new FormData();
     formData.append("password", currentAdminPassword);
 
+    // Add timeout to fetch request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
     fetch("/factoryReset", {
         method: "POST",
-        body: formData
+        body: formData,
+        signal: controller.signal
     })
-        .then(response => response.text())
+        .then(response => {
+            clearTimeout(timeoutId);
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
+            return response.text();
+        })
         .then(text => {
+            console.log("Factory reset response:", text);
             if (text.trim() === "OK") {
-                alert("✅ Factory reset complete!\n\nPage will reload in 500ms to show default values.");
+                alert("Factory reset complete!\n\nThe device will restart.\nPage will reload in 5 seconds.");
                 setTimeout(() => {
                     window.location.reload();
-                }, 500);
+                }, 5000);
             } else {
-                alert("❌ Factory reset failed: " + text);
+                throw new Error("Unexpected response: " + text);
+            }
+        })
+        .catch(err => {
+            clearTimeout(timeoutId);
+            console.error("Factory reset error:", err);
+
+            // Timeout or network error means the device is resetting (expected behavior)
+            if (err.name === 'AbortError' || err.message.includes('Failed to fetch')) {
+                alert("Factory reset complete!\n\nThe device is restarting.\n\nPage will reload in some seconds.");
+                setTimeout(() => {
+                    window.location.reload();
+                }, 8000);
+            } else {
+                // Unexpected error
+                alert("Error during factory reset:\n\n" + err.message);
                 button.disabled = false;
                 button.textContent = 'Restore Defaults';
                 button.style.backgroundColor = '#555555';
             }
-        })
-        .catch(err => {
-            alert("❌ Error during factory reset: " + err.message);
-            button.disabled = false;
-            button.textContent = 'Restore Defaults';
-            button.style.backgroundColor = '#555555';
         });
 }
 
@@ -384,22 +1300,6 @@ function updateInlineStatus(isConnected) {
         }
     }
 }
-// Current Plot Data
-// [timestamps, battery current, alternator current, field current]
-const currentTempData = [[], [], [], []];
-let currentTempPlot;
-
-// Voltage Plot Data
-// [timestamps, ADS Battery V, Victron Battery V, INA Battery V]
-const voltageData = [[], [], []];
-let voltagePlot;
-
-// RPM Plot Data
-const rpmData = [[], []];
-let rpmPlot;
-
-let lastPlotUpdate = 0; // Timestamp of last time we updated the plot
-const PLOT_UPDATE_INTERVAL_MS = 1000; // Only update every 2 seconds (adjust as needed)
 
 
 //Reset buttons
@@ -426,22 +1326,19 @@ function resetParameter(parameterName) {
     submitMessage();
 }
 
-
-
-
 //Console
 function clearConsole() {
     document.getElementById("consoleOutput").innerHTML = "";
 }
 
-//Mirror for GPIO33 Alarm
+//Mirror for Alarm
 function updateAlarmStatus(data) {
     const alarmLed = document.getElementById('alarm-led');
     const alarmText = document.getElementById('alarm-status-text');
 
     if (!alarmLed || !alarmText) return;
 
-    const isAlarming = data.GPIO33_Status === 1; // Mirror GPIO33 directly
+    const isAlarming = data.Alarm_Status === 1; // Mirror Alarm directly
 
     if (isAlarming) {
         // ALARMING: Red light and text
@@ -476,52 +1373,56 @@ function clearStaleMarkings() {
         element.style.fontStyle = "normal";
     });
 }
+function initPlotDataStructures() {
+    // Get actual values from ESP32 data, or use defaults
+    const intervalMs = window._lastKnownInterval || 200;
+    const timeWindowSec = window._lastKnownTimeWindow || 8; // This is in SECONDS
+    const timeWindowMs = timeWindowSec * 1000; // Convert to milliseconds
+    // Calculate correct buffer size
+    const maxPoints = Math.ceil(timeWindowMs / intervalMs);
+    const intervalSec = intervalMs / 1000;
 
+    //console.log(`Buffer: ${maxPoints} points, ${timeWindowMs / 1000}s window, ${intervalMs}ms interval`);
 
-
-//Plots
-
-function scheduleCurrentTempPlotUpdate() {
-    if (!window.currentTempUpdateScheduled && currentTempPlot) {
-        window.currentTempUpdateScheduled = true;
-        requestAnimationFrame(() => {
-            currentTempPlot.setData(currentTempData);
-            window.currentTempUpdateScheduled = false;
-        });
+    if (useTimestamps) {
+        // TIMESTAMP MODE
+        const now = Math.floor(Date.now() / 1000);
+        xAxisData = [];
+        for (let i = 0; i < maxPoints; i++) {
+            xAxisData[i] = now - (maxPoints - 1 - i) * intervalSec;
+        }
+    } else {
+        // RELATIVE TIME MODE
+        xAxisData = [];
+        for (let i = 0; i < maxPoints; i++) {
+            xAxisData[i] = -(maxPoints - 1 - i) * intervalSec;
+        }
     }
+
+    // Initialize all buffers with correct size
+    currentTempData = [
+        [...xAxisData],
+        new Array(maxPoints).fill(0),
+        new Array(maxPoints).fill(0),
+        new Array(maxPoints).fill(0)
+    ];
+
+    voltageData = [
+        [...xAxisData],
+        new Array(maxPoints).fill(0),
+        new Array(maxPoints).fill(0)
+    ];
+
+    rpmData = [
+        [...xAxisData],
+        new Array(maxPoints).fill(0)
+    ];
+
+    temperatureData = [
+        [...xAxisData],
+        new Array(maxPoints).fill(0)
+    ];
 }
-
-function scheduleVoltagePlotUpdate() {
-    if (!window.voltageUpdateScheduled && voltagePlot) {
-        window.voltageUpdateScheduled = true;
-        requestAnimationFrame(() => {
-            voltagePlot.setData(voltageData);
-            window.voltageUpdateScheduled = false;
-        });
-    }
-}
-
-function scheduleRPMPlotUpdate() {
-    if (!window.rpmUpdateScheduled && rpmPlot) {
-        window.rpmUpdateScheduled = true;
-        requestAnimationFrame(() => {
-            rpmPlot.setData(rpmData);
-            window.rpmUpdateScheduled = false;
-        });
-    }
-}
-
-function scheduleTemperaturePlotUpdate() {
-    if (!window.temperatureUpdateScheduled && temperaturePlot) {
-        window.temperatureUpdateScheduled = true;
-        requestAnimationFrame(() => {
-            temperaturePlot.setData(temperatureData);
-            window.temperatureUpdateScheduled = false;
-        });
-    }
-}
-
-
 
 function initCurrentTempPlot() {
     const plotEl = document.getElementById('current-temp-plot');
@@ -535,7 +1436,7 @@ function initCurrentTempPlot() {
         height: 300,
         title: "Current History",
         series: [
-            { label: null, points: { show: false }, stroke: "transparent", width: 0 }, // timestamp - hidden
+            { label: null, points: { show: false }, stroke: "transparent", width: 0 },
             {
                 label: "Battery Current (A)",
                 stroke: "#4CAF50",
@@ -555,20 +1456,37 @@ function initCurrentTempPlot() {
                 scale: "current"
             }
         ],
-        axes: [
-            {},
+        scales: useTimestamps ? {
+            x: { time: true },
+            current: { auto: false, range: [Ymin1, Ymax1] }
+        } : {
+            x: {
+                time: false,
+                auto: false,
+                range: [xAxisData[0], xAxisData[xAxisData.length - 1]]
+            },
+            current: { auto: false, range: [Ymin1, Ymax1] }
+        },
+        axes: useTimestamps ? [
+            { grid: { show: true } },
             {
-                scale: "current",
-                label: "Amperes",
+                scale: "current", // Use appropriate scale name for each plot
+                label: "Amperes", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
+            }
+        ] : [
+            {
+                label: "Seconds Ago",
+                grid: { show: true }
+            },
+            {
+                scale: "current", // Use appropriate scale name for each plot
+                label: "Amperes", // Use appropriate label for each plot
                 grid: { show: true },
                 side: 3
             }
         ],
-        scales: {
-            x: { time: true },
-            current: { auto: true }
-        },
-        // DISABLE the built-in legend completely
         legend: {
             show: false
         },
@@ -576,7 +1494,6 @@ function initCurrentTempPlot() {
             hooks: {
                 init: [
                     (u) => {
-                        // Create custom legend after plot is created
                         createCustomLegend('current-temp-plot', [
                             { label: "Battery Current (A)", color: "#4CAF50" },
                             { label: "Alternator Current (A)", color: "#2196F3" },
@@ -589,7 +1506,12 @@ function initCurrentTempPlot() {
                                 currentTempPlot.setSize({ width: plotEl.clientWidth, height: 300 });
                             }
                         }, 1000);
-                        new ResizeObserver(resizePlot).observe(plotEl);
+
+                        if (currentTempResizeObserver) {
+                            currentTempResizeObserver.disconnect();
+                        }
+                        currentTempResizeObserver = new ResizeObserver(resizePlot);
+                        currentTempResizeObserver.observe(plotEl);
                     }
                 ]
             }
@@ -597,12 +1519,7 @@ function initCurrentTempPlot() {
     };
 
     currentTempPlot = new uPlot(opts, currentTempData, plotEl);
-    const startTime = Math.floor(Date.now() / 1000);
-    currentTempData[0].push(startTime);
-    currentTempData[1].push(0);
-    currentTempData[2].push(0);
-    currentTempData[3].push(0);
-    currentTempPlot.setData(currentTempData);
+    if (document.body.classList.contains('dark-mode')) updateUplotTheme(currentTempPlot);
 }
 
 function initVoltagePlot() {
@@ -617,7 +1534,7 @@ function initVoltagePlot() {
         height: 300,
         title: "Battery Voltage History",
         series: [
-            { label: null, points: { show: false }, stroke: "transparent", width: 0 }, // timestamp - hidden
+            { label: null, points: { show: false }, stroke: "transparent", width: 0 },
             {
                 label: "ADS Battery (V)",
                 stroke: "#FF9800",
@@ -631,19 +1548,37 @@ function initVoltagePlot() {
                 scale: "voltage"
             }
         ],
-        axes: [
-            {},
+        scales: useTimestamps ? {
+            x: { time: true },
+            voltage: { auto: false, range: [Ymin2, Ymax2] }
+        } : {
+            x: {
+                time: false,
+                auto: false,
+                range: [xAxisData[0], xAxisData[xAxisData.length - 1]]
+            },
+            voltage: { auto: false, range: [Ymin2, Ymax2] }
+        },
+        axes: useTimestamps ? [
+            { grid: { show: true } },
             {
-                scale: "voltage",
-                label: "Volts",
+                scale: "voltage", // Use appropriate scale name for each plot
+                label: "Volts", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
+            }
+        ] : [
+            {
+                label: "Seconds Ago",
                 grid: { show: true }
+            },
+            {
+                scale: "voltage", // Use appropriate scale name for each plot
+                label: "Volts", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
             }
         ],
-        scales: {
-            x: { time: true },
-            voltage: { auto: true }
-        },
-        // DISABLE the built-in legend completely
         legend: {
             show: false
         },
@@ -651,7 +1586,6 @@ function initVoltagePlot() {
             hooks: {
                 init: [
                     (u) => {
-                        // Create custom legend after plot is created
                         createCustomLegend('voltage-plot', [
                             { label: "ADS Battery (V)", color: "#FF9800" },
                             { label: "INA Battery (V)", color: "#607D8B" }
@@ -663,7 +1597,12 @@ function initVoltagePlot() {
                                 voltagePlot.setSize({ width: plotEl.clientWidth, height: 300 });
                             }
                         }, 1000);
-                        new ResizeObserver(resizePlot).observe(plotEl);
+
+                        if (voltageResizeObserver) {
+                            voltageResizeObserver.disconnect();
+                        }
+                        voltageResizeObserver = new ResizeObserver(resizePlot);
+                        voltageResizeObserver.observe(plotEl);
                     }
                 ]
             }
@@ -671,11 +1610,7 @@ function initVoltagePlot() {
     };
 
     voltagePlot = new uPlot(opts, voltageData, plotEl);
-    const startTime = Math.floor(Date.now() / 1000);
-    voltageData[0].push(startTime);
-    voltageData[1].push(0);
-    voltageData[2].push(0);
-    voltagePlot.setData(voltageData);
+    if (document.body.classList.contains('dark-mode')) updateUplotTheme(voltagePlot);
 }
 
 function initRPMPlot() {
@@ -690,7 +1625,7 @@ function initRPMPlot() {
         height: 300,
         title: "RPM History",
         series: [
-            { label: null, points: { show: false }, stroke: "transparent", width: 0 }, // timestamp - hidden
+            { label: null, points: { show: false }, stroke: "transparent", width: 0 },
             {
                 label: "RPM",
                 stroke: "#E91E63",
@@ -698,19 +1633,38 @@ function initRPMPlot() {
                 scale: "rpm"
             }
         ],
-        axes: [
-            {},
+        scales: useTimestamps ? {
+            x: { time: true },
+            rpm: { auto: false, range: [Ymin3, Ymax3] }
+        } : {
+            x: {
+                time: false,
+                auto: false,
+                range: [xAxisData[0], xAxisData[xAxisData.length - 1]]
+            },
+            rpm: { auto: false, range: [Ymin3, Ymax3] }
+        },
+
+        axes: useTimestamps ? [
+            { grid: { show: true } },
             {
-                scale: "rpm",
-                label: "rev/min",
+                scale: "rpm", // Use appropriate scale name for each plot
+                label: "revs/min", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
+            }
+        ] : [
+            {
+                label: "Seconds Ago",
                 grid: { show: true }
+            },
+            {
+                scale: "rpm", // Use appropriate scale name for each plot
+                label: "revs/min", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
             }
         ],
-        scales: {
-            x: { time: true },
-            rpm: { auto: true }
-        },
-        // DISABLE the built-in legend completely
         legend: {
             show: false
         },
@@ -718,7 +1672,6 @@ function initRPMPlot() {
             hooks: {
                 init: [
                     (u) => {
-                        // Create custom legend after plot is created
                         createCustomLegend('rpm-plot', [
                             { label: "RPM", color: "#E91E63" }
                         ]);
@@ -729,7 +1682,12 @@ function initRPMPlot() {
                                 rpmPlot.setSize({ width: plotEl.clientWidth, height: 300 });
                             }
                         }, 1000);
-                        new ResizeObserver(resizePlot).observe(plotEl);
+
+                        if (rpmResizeObserver) {
+                            rpmResizeObserver.disconnect();
+                        }
+                        rpmResizeObserver = new ResizeObserver(resizePlot);
+                        rpmResizeObserver.observe(plotEl);
                     }
                 ]
             }
@@ -737,16 +1695,8 @@ function initRPMPlot() {
     };
 
     rpmPlot = new uPlot(opts, rpmData, plotEl);
-    const startTime = Math.floor(Date.now() / 1000);
-    rpmData[0].push(startTime);
-    rpmData[1].push(0);
-    rpmPlot.setData(rpmData);
+    if (document.body.classList.contains('dark-mode')) updateUplotTheme(rpmPlot);
 }
-
-
-// Temperature Plot Data
-const temperatureData = [[], []];
-let temperaturePlot;
 
 function initTemperaturePlot() {
     const plotEl = document.getElementById('temperature-plot');
@@ -760,7 +1710,7 @@ function initTemperaturePlot() {
         height: 300,
         title: "Alternator Temperature History",
         series: [
-            { label: null, points: { show: false }, stroke: "transparent", width: 0 }, // timestamp - hidden
+            { label: null, points: { show: false }, stroke: "transparent", width: 0 },
             {
                 label: "Alt. Temp (°F)",
                 stroke: "#FF5722",
@@ -768,18 +1718,37 @@ function initTemperaturePlot() {
                 scale: "temperature"
             }
         ],
-        axes: [
-            {},
+        scales: useTimestamps ? {
+            x: { time: true },
+            temperature: { auto: false, range: [Ymin4, Ymax4] }
+        } : {
+            x: {
+                time: false,
+                auto: false,
+                range: [xAxisData[0], xAxisData[xAxisData.length - 1]]
+            },
+            temperature: { auto: false, range: [Ymin4, Ymax4] }
+        },
+        axes: useTimestamps ? [
+            { grid: { show: true } },
             {
-                scale: "temperature",
-                label: "°Fahrenheit",
+                scale: "temperature", // Use appropriate scale name for each plot
+                label: "F", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
+            }
+        ] : [
+            {
+                label: "Seconds Ago",
                 grid: { show: true }
+            },
+            {
+                scale: "temperature", // Use appropriate scale name for each plot
+                label: "F", // Use appropriate label for each plot
+                grid: { show: true },
+                side: 3
             }
         ],
-        scales: {
-            x: { time: true },
-            temperature: { auto: true }
-        },
         legend: {
             show: false
         },
@@ -797,7 +1766,12 @@ function initTemperaturePlot() {
                                 temperaturePlot.setSize({ width: plotEl.clientWidth, height: 300 });
                             }
                         }, 1000);
-                        new ResizeObserver(resizePlot).observe(plotEl);
+
+                        if (temperatureResizeObserver) {
+                            temperatureResizeObserver.disconnect();
+                        }
+                        temperatureResizeObserver = new ResizeObserver(resizePlot);
+                        temperatureResizeObserver.observe(plotEl);
                     }
                 ]
             }
@@ -805,11 +1779,70 @@ function initTemperaturePlot() {
     };
 
     temperaturePlot = new uPlot(opts, temperatureData, plotEl);
-    const startTime = Math.floor(Date.now() / 1000);
-    temperatureData[0].push(startTime);
-    temperatureData[1].push(75);
-    temperaturePlot.setData(temperatureData);
+    if (document.body.classList.contains('dark-mode')) updateUplotTheme(temperaturePlot);
 }
+
+//Staleness stuff
+// Helper function to apply staleness styling using age directly
+function applyStaleStyleByAge(elementId, ageMs) {
+    const element = document.getElementById(elementId);
+    if (!element) {
+        console.warn(`Element ${elementId} not found for stale styling`);
+        return;
+    }
+    const staleThreshold = 11000; // 11 seconds, don't go lower without making sure digital temp sensor tempTask is going to keep up
+    const isStale = (ageMs > staleThreshold);
+    if (isStale) {
+        element.style.opacity = "0.4";
+        element.style.color = "#999999";
+        element.style.fontStyle = "italic";
+        element.title = `Data is ${Math.round(ageMs / 1000)} seconds old`;
+    } else {
+        element.style.opacity = "1.0";
+        element.style.color = "var(--reading)";
+        element.style.fontStyle = "normal";
+        element.title = "";
+    }
+}
+// Function to update all staleness styling
+function updateAllStalenessStyles() {
+    if (!window.sensorAges) return;
+
+    // Apply staleness using ages directly 
+    applyStaleStyleByAge("HeadingNMEAID", window.sensorAges.heading);                      // GPS heading
+    applyStaleStyleByAge("LatitudeNMEA_ID", window.sensorAges.latitude);            // GPS latitude
+    applyStaleStyleByAge("LongitudeNMEA_ID", window.sensorAges.longitude);          // GPS longitude
+    applyStaleStyleByAge("SatelliteCountNMEA_ID", window.sensorAges.satellites);    // GPS satellite count
+    applyStaleStyleByAge("VictronVoltageID", window.sensorAges.victronVoltage);     // Victron voltage
+    applyStaleStyleByAge("VictronCurrentID", window.sensorAges.victronCurrent);     // Victron current
+    applyStaleStyleByAge("AltTempID", window.sensorAges.alternatorTemp);            // Alternator temperature
+    applyStaleStyleByAge("temperatureThermistorID", window.sensorAges.thermistorTemp); // Thermistor temperature
+    applyStaleStyleByAge("RPMID", window.sensorAges.rpm);                           // Engine RPM
+    applyStaleStyleByAge("MeasAmpsID", window.sensorAges.measuredAmps);             // Alternator current
+    applyStaleStyleByAge("BatteryVID", window.sensorAges.batteryV);                 // ADS battery voltage
+    applyStaleStyleByAge("IBVID", window.sensorAges.ibv);                           // INA battery voltage
+    applyStaleStyleByAge("BCurrID", window.sensorAges.bcur);                        // Battery current
+    applyStaleStyleByAge("ADS3ID", window.sensorAges.channel3V);                    // ADS Channel 3 voltage
+    applyStaleStyleByAge("dutyCycleID", window.sensorAges.dutyCycle);               // Field duty cycle
+    applyStaleStyleByAge("FieldVoltsID", window.sensorAges.fieldVolts);             // Field voltage (calculated)
+    applyStaleStyleByAge("FieldAmpsID", window.sensorAges.fieldAmps);               // Field current (calculated)
+
+    //banner
+    applyStaleStyleByAge("header-voltage", window.sensorAges.ibv);
+    applyStaleStyleByAge("header-soc", window.sensorAges.soc);
+    applyStaleStyleByAge("header-alt-current", window.sensorAges.measuredAmps);
+    applyStaleStyleByAge("header-batt-current", window.sensorAges.bcur);
+    applyStaleStyleByAge("header-alt-temp", window.sensorAges.alternatorTemp);
+    applyStaleStyleByAge("header-rpm", window.sensorAges.rpm);
+}
+
+// Start the staleness detection system - call this from window.load
+function startStalenessDetection() {
+    // Update staleness styling every 2 seconds
+    setInterval(updateAllStalenessStyles, 2000);
+}
+
+
 
 // Custom legend creation function
 function createCustomLegend(plotId, legendItems) {
@@ -893,6 +1926,8 @@ function setAdminPassword() {
                 // Unlock settings
                 const section = document.getElementById('settings-section');
                 if (section) section.classList.remove("locked");
+                const plotControls = document.getElementById('plots-controls');
+                if (plotControls) plotControls.classList.remove("locked");
                 document.querySelector('.permanent-header').classList.remove('locked');  // remove this bullshit probably
 
                 // Also unlock header controls
@@ -978,52 +2013,81 @@ function setNewPassword() {
 }
 
 
-//prevent double toggling here
-function updateTogglesFromData(data) {
-    // Add periodic cleanup at the start
-    if (userInitiatedToggles.size > 10) { // If too many pending
-        userInitiatedToggles.clear();
-        console.log("Cleared stale toggle states");
+function triggerWeatherUpdate() {
+    if (!currentAdminPassword) {
+        alert("Please unlock settings first");
+        return;
     }
+
+    const formData = new FormData();
+    formData.append("password", currentAdminPassword);
+    formData.append("TriggerWeatherUpdate", "1");
+
+    fetch("/get?" + new URLSearchParams(formData).toString())
+        .then(() => console.log("Weather update triggered"))
+        .catch(err => console.error("Weather update failed:", err));
+}
+
+
+function updateTogglesFromData(data) {
     try {
         if (!data) return;
 
+        const now = Date.now();
+        // Update time axis mode when ESP32 value changes
+        if (data.timeAxisModeChanging !== undefined) {
+            const newTimeAxisMode = (data.timeAxisModeChanging === 1);
+            if (useTimestamps !== newTimeAxisMode) {
+                useTimestamps = newTimeAxisMode;
+                console.log(`Time axis mode updated from ESP32: ${useTimestamps ? 'UNIX timestamps' : 'relative time'}`);
+
+                // Reinitialize plots with new mode
+                initPlotDataStructures();
+                if (currentTempPlot) { currentTempPlot.destroy(); initCurrentTempPlot(); }
+                if (voltagePlot) { voltagePlot.destroy(); initVoltagePlot(); }
+                if (rpmPlot) { rpmPlot.destroy(); initRPMPlot(); }
+                if (temperaturePlot) { temperaturePlot.destroy(); initTemperaturePlot(); }
+                reinitializeXAxisForNewMode();
+            }
+        }
         const updateCheckbox = (id, value, dataKey) => {
             if (value === undefined) return;
+
+            const lastUserAction = userInitiatedToggles.get(dataKey);
+
+            // Skip if user action was recent
+            if (lastUserAction && (now - lastUserAction) < IGNORE_DURATION) {
+                return; // Skip server update
+            }
+
+            // Clean up old entries automatically
+            if (lastUserAction && (now - lastUserAction) >= IGNORE_DURATION) {
+                userInitiatedToggles.delete(dataKey);
+            }
 
             const checkbox = document.getElementById(id);
             if (!checkbox) return;
 
             const shouldBeChecked = (value === 1);
-
-            // Skip update if this was a user-initiated change
-            if (userInitiatedToggles.has(dataKey)) {
-                userInitiatedToggles.delete(dataKey);
-                return;
-            }
-
-            // Only update if state actually changed
             if (checkbox.checked !== shouldBeChecked) {
                 checkbox.checked = shouldBeChecked;
                 toggleStates[dataKey] = value;
             }
         };
 
-        // Update all toggle checkboxes with their data keys
+        // Update all toggle checkboxes with their data keys (keep existing calls)
         updateCheckbox("ManualFieldToggle_checkbox", data.ManualFieldToggle, "ManualFieldToggle");
         updateCheckbox("SwitchControlOverride_checkbox", data.SwitchControlOverride, "SwitchControlOverride");
-        //updateCheckbox("OnOff_checkbox", data.OnOff, "OnOff");
-        updateCheckbox("header-alternator-enable", data.OnOff, "OnOff"); /// this one is for the banner aka header
+        updateCheckbox("header-alternator-enable", data.OnOff, "OnOff");
         updateCheckbox("LimpHome_checkbox", data.LimpHome, "LimpHome");
         updateCheckbox("HiLow_checkbox", data.HiLow, "HiLow");
         updateCheckbox("VeData_checkbox", data.VeData, "VeData");
         updateCheckbox("NMEA0183Data_checkbox", data.NMEA0183Data, "NMEA0183Data");
         updateCheckbox("NMEA2KData_checkbox", data.NMEA2KData, "NMEA2KData");
         updateCheckbox("IgnoreTemperature_checkbox", data.IgnoreTemperature, "IgnoreTemperature");
-        updateCheckbox("BMSLogic_checkbox", data.BMSLogic, "BMSLogic");
-        updateCheckbox("BMSLogicLevelOff_checkbox", data.BMSLogicLevelOff, "BMSLogicLevelOff");
+        updateCheckbox("bmsLogic_checkbox", data.bmsLogic, "bmsLogic");
+        updateCheckbox("bmsLogicLevelOff_checkbox", data.bmsLogicLevelOff, "bmsLogicLevelOff");
         updateCheckbox("AlarmActivate_checkbox", data.AlarmActivate, "AlarmActivate");
-        updateCheckbox("AmpControlByRPM_checkbox", data.AmpControlByRPM, "AmpControlByRPM");
         updateCheckbox("InvertAltAmps_checkbox", data.InvertAltAmps, "InvertAltAmps");
         updateCheckbox("InvertBattAmps_checkbox", data.InvertBattAmps, "InvertBattAmps");
         updateCheckbox("IgnitionOverride_checkbox", data.IgnitionOverride, "IgnitionOverride");
@@ -1032,12 +2096,35 @@ function updateTogglesFromData(data) {
         updateCheckbox("ForceFloat_checkbox", data.ForceFloat, "ForceFloat");
         updateCheckbox("AutoShuntGainCorrection_checkbox", data.AutoShuntGainCorrection, "AutoShuntGainCorrection");
         updateCheckbox("AutoAltCurrentZero_checkbox", data.AutoAltCurrentZero, "AutoAltCurrentZero");
-        updateCheckbox("InvertBatteryMonitorAmps_checkbox", data.InvertBatteryMonitorAmps, "InvertBatteryMonitorAmps");
+        updateCheckbox("timeAxisModeChanging_checkbox", data.timeAxisModeChanging, "timeAxisModeChanging");
+        updateCheckbox("weatherModeEnabled_checkbox", data.weatherModeEnabled, "weatherModeEnabled");
+        updateCheckbox("LearningMode_checkbox", data.LearningMode, "LearningMode");
+        if (data.LearningMode !== undefined) {
+            updateLearningTableEditability(data.LearningMode === 1);
+        }
+        updateCheckbox("LearningPaused_checkbox", data.LearningPaused, "LearningPaused");
+        updateCheckbox("LearningDryRunMode_checkbox", data.LearningDryRunMode, "LearningDryRunMode");
+        updateCheckbox("LearningUpwardEnabled_checkbox", data.LearningUpwardEnabled, "LearningUpwardEnabled");
+        updateCheckbox("LearningDownwardEnabled_checkbox", data.LearningDownwardEnabled, "LearningDownwardEnabled");
+        updateCheckbox("EnableNeighborLearning_checkbox", data.EnableNeighborLearning, "EnableNeighborLearning");
+        updateCheckbox("AutoSaveLearningTable_checkbox", data.AutoSaveLearningTable, "AutoSaveLearningTable");
+        updateCheckbox("ShowLearningDebugMessages_checkbox", data.ShowLearningDebugMessages, "ShowLearningDebugMessages");
+        updateCheckbox("EXTRA_checkbox", data.EXTRA, "EXTRA");
+        // updateCheckbox("IgnoreLearningDuringPenalty_checkbox", data.IgnoreLearningDuringPenalty, "IgnoreLearningDuringPenalty");
 
+
+
+
+        // // Apply the ESP32 state to the plot system
+        // if (data.timeAxisModeChanging !== undefined) {
+        //     useTimestamps = (data.timeAxisModeChanging === 1);
+        //     // Optionally reinitialize plots here if you want real-time updates
+        // }
     } catch (e) {
         console.log("Error updating toggle states: " + e.message);
     }
 }
+
 
 //function to handle user toggle changes without double toggle
 function handleUserToggle(checkboxId, hiddenInputId, dataKey) {
@@ -1048,23 +2135,38 @@ function handleUserToggle(checkboxId, hiddenInputId, dataKey) {
         const newValue = checkbox.checked ? '1' : '0';
         hiddenInput.value = newValue;
 
-        // Mark this as user-initiated to prevent server override
-        userInitiatedToggles.add(dataKey);
+        // Use timestamp instead of Set for better control
+        userInitiatedToggles.set(dataKey, Date.now());
 
-        // Store the new state
-        toggleStates[dataKey] = parseInt(newValue);
-
-        // Clear the flag after a reasonable delay (longer than your server response time)
-        setTimeout(() => {
-            userInitiatedToggles.delete(dataKey);
-        }, 5000); // Increased timeout
-
-        return true; // Allow form submission
+        return true;
     }
     return false;
 }
 
-window.addEventListener("load", function () {     //AM I IN
+// Initialize learning table flag BEFORE any event handlers
+if (typeof window.learningTableInitialized === 'undefined') {
+    window.learningTableInitialized = false;
+}
+
+// this is known as the window.load event in AI speak
+window.addEventListener("load", function () {
+    // DEBUG CODE
+    const originalGetElementById = document.getElementById;
+    let warnedElements = new Set();
+
+    document.getElementById = function (id) {
+        const element = originalGetElementById.call(document, id);
+        if (!element && !warnedElements.has(id)) {
+            console.error(`MISSING ELEMENT: ${id}`);
+            console.trace();
+            warnedElements.add(id);
+        }
+        return element;
+    };
+    // END DEBUG CODE
+    startStalenessDetection(); // stalness detectioin detect stale values
+
+    initPlotDataStructures(); // Initialize efficient data structures
     //give initial values that will cause graying until proven otherwise
     window.sensorAges = {
         heading: 999999,
@@ -1095,6 +2197,8 @@ window.addEventListener("load", function () {     //AM I IN
     if (settingsSection) {
         settingsSection.classList.add("locked");
     }
+    const plotControls = document.getElementById('plots-controls');
+    if (plotControls) plotControls.classList.add("locked");
     const lockStatus = document.getElementById('lock-status');
     if (lockStatus) {
         lockStatus.textContent = "Settings are Locked";
@@ -1108,80 +2212,83 @@ window.addEventListener("load", function () {     //AM I IN
 
     showMainTab('livedata'); // loads the first tab instead of it being blank
 
+    // Simple WiFi disconnect tracking - ping every 10 seconds
+    setInterval(() => {
+        fetch('/ping?t=' + Date.now()).catch(() => { });
+    }, 10000);
+
     initCurrentTempPlot();
     initVoltagePlot();
     initRPMPlot();
     initTemperaturePlot();
 
+    // Initialize learning table editability based on initial state
+    // Note: This reads from hidden input which may not be populated yet
+    const initialLearningMode = document.getElementById("LearningMode")?.value === "1";
+    updateLearningTableEditability(initialLearningMode); // Safe to call with undefined
+
+    // Set up one-time listener for when actual state arrives from ESP32
+    let editabilityInitialized = false;
+    const editabilityCheck = setInterval(() => {
+        if (!editabilityInitialized) {
+            const checkbox = document.getElementById("LearningMode_checkbox");
+            // Check if checkbox exists and has been set by CSVData2
+            if (checkbox && checkbox.checked !== null) {  // Changed this line
+                updateLearningTableEditability(checkbox.checked);
+                editabilityInitialized = true;
+                clearInterval(editabilityCheck);
+                console.log('Learning table editability initialized from ESP32');
+            }
+        }
+    }, 100); // Check every 100ms until CSVData2 arrives
+
+    // Clean up if taking too long
+    setTimeout(() => clearInterval(editabilityCheck), 5000);
+
+
+
+    // Track if learning table has unsaved changes
+    let learningTableHasChanges = false;
+
+    // Add change listeners to all learning table inputs
+    document.querySelectorAll('#learning-table-form input[type="number"]').forEach(input => {
+        input.addEventListener('input', function () {
+            learningTableHasChanges = true;
+            showSaveTableButton();
+        });
+    });
+
+    // Show save button when changes detected
+    function showSaveTableButton() {
+        const saveBtn = document.querySelector('.btn-save-table');
+        if (saveBtn) {
+            saveBtn.style.display = 'inline-block';
+        }
+    }
+
+    // Hide save button after form submission
+    document.getElementById('learning-table-form').addEventListener('submit', function () {
+        learningTableHasChanges = false;
+        const saveBtn = document.querySelector('.btn-save-table');
+        if (saveBtn) {
+            saveBtn.style.display = 'none';
+        }
+    });
+
+    // Warn before leaving page with unsaved changes
+    window.addEventListener('beforeunload', function (e) {
+        if (learningTableHasChanges) {
+            e.preventDefault();
+            e.returnValue = 'You have unsaved changes to the learning table. Are you sure you want to leave?';
+            return e.returnValue;
+        }
+    });
+
+
+
+
     if (!!window.EventSource) {
-        const telemetryFields = [
-            //Telemetry: Live sensor data that changes frequently
-            ["AltTempID", "AlternatorTemperatureF"],         // 0
-            ["DutyCycleID", "DutyCycle"],                    // 1
-            ["BatteryVID", "BatteryV"],                      // 2
-            ["MeasAmpsID", "MeasuredAmps"],                  // 3
-            ["RPMID", "RPM"],                                // 4
-            ["ADS3ID", "Channel3V"],                         // 5
-            ["IBVID", "IBV"],                                // 6
-            ["BCurrID", "Bcur"],                             // 7
-            ["VictronVoltageID", "VictronVoltage"],          // 8
-            ["LoopTimeID", "LoopTime"],                      // 9
-            ["WifiStrengthID", "WifiStrength"],              // 10
-            ["WifiHeartBeatID", "WifiHeartBeat"],            // 11
-            ["SendWifiTimeID", "SendWifiTime"],              // 12
-            ["AnalogReadTimeID", "AnalogReadTime"],          // 13
-            ["VeTimeID", "VeTime"],                          // 14
-            ["MaximumLoopTimeID", "MaximumLoopTime"],        // 15
-            ["GPSHID", "HeadingNMEA"],                       // 16
-            ["FieldVoltsID", "vvout"],                       // 17
-            ["FieldAmpsID", "iiout"],                        // 18
-            ["FreeHeapID", "FreeHeap"],                      // 19
-            ["IBVMaxID", "IBVMax"],                          // 20
-            ["MeasuredAmpsMaxID", "MeasuredAmpsMax"],        // 21
-            ["RPMMaxID", "RPMMax"],                          // 22
-            ["SoC_percentID", "SoC_percent"],                // 23
-            ["EngineRunTimeID", "EngineRunTime"],            // 24
-            ["EngineCyclesID", "EngineCycles"],              // 25
-            ["AlternatorOnTimeID", "AlternatorOnTime"],      // 26
-            ["AlternatorFuelUsedID", "AlternatorFuelUsed"],  // 27
-            ["ChargedEnergyID", "ChargedEnergy"],            // 28
-            ["DischargedEnergyID", "DischargedEnergy"],      // 29
-            ["AlternatorChargedEnergyID", "AlternatorChargedEnergy"], // 30
-            ["MaxAlternatorTemperatureF_ID", "MaxAlternatorTemperatureF"], // 31
-            ["temperatureThermistorID", "temperatureThermistor"], //32
-            ["MaxTemperatureThermistorID", "MaxTemperatureThermistor"], //33
-            ["VictronCurrentID", "VictronCurrent"],          // 34
-            ["LatitudeNMEA_ID", "LatitudeNMEA"],     // 115
-            ["LongitudeNMEA_ID", "LongitudeNMEA"],   // 116  
-            ["SatelliteCountNMEA_ID", "SatelliteCountNMEA"], // 117
-            ["header-voltage", "IBV"],                       // Add this
-            ["header-soc", "SoC_percent"],                   // Add this  
-            ["header-alt-current", "MeasuredAmps"],          // Add this
-            ["header-batt-current", "Bcur"],                 // Add this
-            ["header-alt-temp", "AlternatorTemperatureF"],   // Add this
-            ["header-rpm", "RPM"],                          // Add this
-            ["timeToFullChargeMinID", "timeToFullChargeMin"],
-            ["timeToFullDischargeMinID", "timeToFullDischargeMin"],
-            ["DynamicShuntGainFactorID", "DynamicShuntGainFactor"],
-            ["DynamicAltCurrentZeroID", "DynamicAltCurrentZero"],
-            ["InsulationLifePercentID", "InsulationLifePercent"],
-            ["GreaseLifePercentID", "GreaseLifePercent"],
-            ["BrushLifePercentID", "BrushLifePercent"],
-            ["PredictedLifeHoursID", "PredictedLifeHours"],
-            ["LastSessionDurationID", "LastSessionDuration"],
-            ["LastSessionMaxLoopTimeID", "LastSessionMaxLoopTime"],
-            ["LastSessionMinHeapID", "LastSessionMinHeap"],
-            ["WifiReconnectsThisSessionID", "WifiReconnectsThisSession"],
-            ["WifiReconnectsTotalID", "WifiReconnectsTotal"],
-            ["CurrentSessionDurationID", "CurrentSessionDuration"],
-            ["CurrentWifiSessionDurationID", "CurrentWifiSessionDuration"],
-            ["LastResetReasonID", "LastResetReason"],
-            ["LastWifiResetReasonID", "LastWifiResetReason"],
-            ["totalPowerCyclesID", "totalPowerCycles"]
 
-        ];
-
-        // this is the numerical displays, with scaling done locally
         const source = new EventSource('/events');
 
 
@@ -1197,7 +2304,6 @@ window.addEventListener("load", function () {     //AM I IN
                 consoleDiv.removeChild(consoleDiv.firstChild);
             }
         });
-
         source.addEventListener('open', function () {
             console.log('EventSource connected successfully');
             updateInlineStatus(true);
@@ -1209,24 +2315,45 @@ window.addEventListener("load", function () {     //AM I IN
             }
             reconnectionAttempts = 0;
         }, false);
+        let failedReconnectCount = 0;
 
-        source.addEventListener('error', function () {
-            console.log('EventSource error - showing recovery options');
-            updateInlineStatus(false);
-            source.close();
-            showRecoveryOptions();
+
+        source.addEventListener('error', function (e) {
+            console.log('EventSource error, readyState:', this.readyState);
+
+            if (this.readyState === EventSource.CONNECTING) {
+                // Browser is already trying to reconnect - let it work
+                console.log('Browser attempting automatic reconnection...');
+                failedReconnectCount++;
+
+                // Only show recovery dialog after many failures
+                if (failedReconnectCount > 6) {  //could increase but trying to save battery
+                    this.close();
+                    showRecoveryOptions();
+                }
+            } else if (this.readyState === EventSource.CLOSED) {
+                // Connection permanently closed - show recovery
+                showRecoveryOptions();
+            }
         }, false);
+
+        // Reset counter on successful connection
+        source.addEventListener('open', function () {
+            failedReconnectCount = 0;
+            console.log('EventSource reconnected successfully');
+        });
 
         // Initial status - set to connected if we made it this far
         updateInlineStatus(true);
 
         setInterval(function () {
             const timeSinceLastEvent = Date.now() - lastEventTime;
-            if (timeSinceLastEvent > 5000) { // 5 seconds without data = disconnected
+            if (timeSinceLastEvent > 8000) { // 8 seconds without data = disconnected
                 updateInlineStatus(false);
                 markAllReadingsStale(); //gray out
             }
         }, 2000); // Check every 2 seconds
+
         source.addEventListener('CSVData', function (e) {
             // Update timestamp when data is received
             lastEventTime = Date.now();
@@ -1237,745 +2364,872 @@ window.addEventListener("load", function () {     //AM I IN
             // Parse CSV data into an array
             const values = e.data.split(',').map(Number);
 
-            if (values.length !== Object.keys(fieldIndexes).length) {
-                console.warn("CSV mismatch: ESP32/HTML field count diverged");
+            // CSVData now has 37 values instead of 170
+            if (values.length !== 37) {
+                // Throttle CSV mismatch warnings to every 10 seconds
+                if (!window.lastCsvWarningTime) window.lastCsvWarningTime = 0;
+                const now = Date.now();
+
+                if ((now - window.lastCsvWarningTime) > 10000) { // 10 seconds
+                    console.warn(`CSV mismatch: Got ${values.length} values but expected 37 fields for CSVData`);
+                    console.warn("First few values:", values.slice(0, 10));
+                    console.warn("Last few values:", values.slice(-10));
+                    window.lastCsvWarningTime = now;
+                }
                 return;
             }
+            //CSVData
             const data = {
-                AlternatorTemperatureF: values[fieldIndexes.AlternatorTemperatureF], // 0
-                DutyCycle: values[fieldIndexes.DutyCycle],
-                BatteryV: values[fieldIndexes.BatteryV], // 2
-                MeasuredAmps: values[fieldIndexes.MeasuredAmps],
-                RPM: values[fieldIndexes.RPM], // 4
-                Channel3V: values[fieldIndexes.Channel3V],
-                IBV: values[fieldIndexes.IBV], // 6
-                Bcur: values[fieldIndexes.Bcur],
-                VictronVoltage: values[fieldIndexes.VictronVoltage], // 8
-                LoopTime: values[fieldIndexes.LoopTime], //9
-                WifiStrength: values[fieldIndexes.WifiStrength], // 10
-                WifiHeartBeat: values[fieldIndexes.WifiHeartBeat],
-                SendWifiTime: values[fieldIndexes.SendWifiTime], // 12
-                AnalogReadTime: values[fieldIndexes.AnalogReadTime],
-                VeTime: values[fieldIndexes.VeTime], // 14
-                MaximumLoopTime: values[fieldIndexes.MaximumLoopTime],
-                HeadingNMEA: values[fieldIndexes.HeadingNMEA], // 16
-                vvout: values[fieldIndexes.vvout],
-                iiout: values[fieldIndexes.iiout], // 18
-                FreeHeap: values[fieldIndexes.FreeHeap],
-                IBVMax: values[fieldIndexes.IBVMax], // 20
-                MeasuredAmpsMax: values[fieldIndexes.MeasuredAmpsMax],
-                RPMMax: values[fieldIndexes.RPMMax], // 22
-                SoC_percent: values[fieldIndexes.SoC_percent],
-                EngineRunTime: values[fieldIndexes.EngineRunTime],
-                EngineCycles: values[fieldIndexes.EngineCycles],
-                AlternatorOnTime: values[fieldIndexes.AlternatorOnTime],
-                AlternatorFuelUsed: values[fieldIndexes.AlternatorFuelUsed],
-                ChargedEnergy: values[fieldIndexes.ChargedEnergy],
-                DischargedEnergy: values[fieldIndexes.DischargedEnergy],
-                AlternatorChargedEnergy: values[fieldIndexes.AlternatorChargedEnergy],
-                MaxAlternatorTemperatureF: values[fieldIndexes.MaxAlternatorTemperatureF],
-                TemperatureLimitF: values[fieldIndexes.TemperatureLimitF],
-                FullChargeVoltage: values[fieldIndexes.FullChargeVoltage],
-                TargetAmps: values[fieldIndexes.TargetAmps],
-                TargetFloatVoltage: values[fieldIndexes.TargetFloatVoltage],
-                SwitchingFrequency: values[fieldIndexes.SwitchingFrequency],
-                interval: values[fieldIndexes.interval],
-                FieldAdjustmentInterval: values[fieldIndexes.FieldAdjustmentInterval],
-                ManualDuty: values[fieldIndexes.ManualDuty],
-                SwitchControlOverride: values[fieldIndexes.SwitchControlOverride],
-                OnOff: values[fieldIndexes.OnOff],
-                ManualFieldToggle: values[fieldIndexes.ManualFieldToggle],
-                HiLow: values[fieldIndexes.HiLow],
-                LimpHome: values[fieldIndexes.LimpHome],
-                VeData: values[fieldIndexes.VeData],
-                NMEA0183Data: values[fieldIndexes.NMEA0183Data],
-                NMEA2KData: values[fieldIndexes.NMEA2KData],
-                TargetAmpL: values[fieldIndexes.TargetAmpL],
-                CurrentThreshold: values[fieldIndexes.CurrentThreshold],
-                PeukertExponent: values[fieldIndexes.PeukertExponent],
-                ChargeEfficiency: values[fieldIndexes.ChargeEfficiency],
-                ChargedVoltage: values[fieldIndexes.ChargedVoltage],
-                TailCurrent: values[fieldIndexes.TailCurrent],
-                ChargedDetectionTime: values[fieldIndexes.ChargedDetectionTime],
-                IgnoreTemperature: values[fieldIndexes.IgnoreTemperature],
-                BMSLogic: values[fieldIndexes.BMSLogic],
-                BMSLogicLevelOff: values[fieldIndexes.BMSLogicLevelOff],
-                AlarmActivate: values[fieldIndexes.AlarmActivate],
-                TempAlarm: values[fieldIndexes.TempAlarm],
-                VoltageAlarmHigh: values[fieldIndexes.VoltageAlarmHigh],
-                VoltageAlarmLow: values[fieldIndexes.VoltageAlarmLow],
-                CurrentAlarmHigh: values[fieldIndexes.CurrentAlarmHigh],
-                FourWay: values[fieldIndexes.FourWay],
-                RPMScalingFactor: values[fieldIndexes.RPMScalingFactor],
-                ResetTemp: values[fieldIndexes.ResetTemp],
-                ResetVoltage: values[fieldIndexes.ResetVoltage],
-                ResetCurrent: values[fieldIndexes.ResetCurrent],
-                ResetEngineRunTime: values[fieldIndexes.ResetEngineRunTime],
-                ResetAlternatorOnTime: values[fieldIndexes.ResetAlternatorOnTime],
-                ResetEnergy: values[fieldIndexes.ResetEnergy],
-                MaximumAllowedBatteryAmps: values[fieldIndexes.MaximumAllowedBatteryAmps],
-                ManualSOCPoint: values[fieldIndexes.ManualSOCPoint],
-                BatteryVoltageSource: values[fieldIndexes.BatteryVoltageSource],
-                AmpControlByRPM: values[fieldIndexes.AmpControlByRPM],
-                RPM1: values[fieldIndexes.RPM1],
-                RPM2: values[fieldIndexes.RPM2],
-                RPM3: values[fieldIndexes.RPM3],
-                RPM4: values[fieldIndexes.RPM4],
-                Amps1: values[fieldIndexes.Amps1],
-                Amps2: values[fieldIndexes.Amps2],
-                Amps3: values[fieldIndexes.Amps3],
-                Amps4: values[fieldIndexes.Amps4],
-                RPM5: values[fieldIndexes.RPM5],
-                RPM6: values[fieldIndexes.RPM6],
-                RPM7: values[fieldIndexes.RPM7],
-                Amps5: values[fieldIndexes.Amps5],
-                Amps6: values[fieldIndexes.Amps6],
-                Amps7: values[fieldIndexes.Amps7],
-                ShuntResistanceMicroOhm: values[fieldIndexes.ShuntResistanceMicroOhm],
-                InvertAltAmps: values[fieldIndexes.InvertAltAmps],
-                InvertBattAmps: values[fieldIndexes.InvertBattAmps],
-                MaxDuty: values[fieldIndexes.MaxDuty],
-                MinDuty: values[fieldIndexes.MinDuty],
-                FieldResistance: values[fieldIndexes.FieldResistance],
-                maxPoints: values[fieldIndexes.maxPoints],
-                AlternatorCOffset: values[fieldIndexes.AlternatorCOffset],
-                BatteryCOffset: values[fieldIndexes.BatteryCOffset],
-                BatteryCapacity_Ah: values[fieldIndexes.BatteryCapacity_Ah],
-                AmpSrc: values[fieldIndexes.AmpSrc],
-                R_fixed: values[fieldIndexes.R_fixed],
-                Beta: values[fieldIndexes.Beta],
-                T0_C: values[fieldIndexes.T0_C],
-                TempSource: values[fieldIndexes.TempSource],
-                IgnitionOverride: values[fieldIndexes.IgnitionOverride],
-                temperatureThermistor: values[fieldIndexes.temperatureThermistor],
-                MaxTemperatureThermistor: values[fieldIndexes.MaxTemperatureThermistor],
-                VictronCurrent: values[fieldIndexes.VictronCurrent],
-                AlarmLatchEnabled: values[fieldIndexes.AlarmLatchEnabled],
-                ForceFloat: values[fieldIndexes.ForceFloat],
-                bulkCompleteTime: values[fieldIndexes.bulkCompleteTime],
-                FLOAT_DURATION: values[fieldIndexes.FLOAT_DURATION],
-                GPIO33_Status: values[fieldIndexes.GPIO33_Status],
-                fieldActiveStatus: values[fieldIndexes.fieldActiveStatus],
-                timeToFullChargeMin: values[fieldIndexes.timeToFullChargeMin],
-                timeToFullDischargeMin: values[fieldIndexes.timeToFullDischargeMin],
-                AutoShuntGainCorrection: values[fieldIndexes.AutoShuntGainCorrection],
-                DynamicShuntGainFactor: values[fieldIndexes.DynamicShuntGainFactor],
-                AutoAltCurrentZero: values[fieldIndexes.AutoAltCurrentZero],
-                DynamicAltCurrentZero: values[fieldIndexes.DynamicAltCurrentZero],
-                InsulationLifePercent: values[fieldIndexes.InsulationLifePercent],
-                GreaseLifePercent: values[fieldIndexes.GreaseLifePercent],
-                BrushLifePercent: values[fieldIndexes.BrushLifePercent],
-                PredictedLifeHours: values[fieldIndexes.PredictedLifeHours],
-                LifeIndicatorColor: values[fieldIndexes.LifeIndicatorColor],
-                WindingTempOffset: values[fieldIndexes.WindingTempOffset],
-                PulleyRatio: values[fieldIndexes.PulleyRatio],
-                LastSessionDuration: values[fieldIndexes.LastSessionDuration],
-                LastSessionMaxLoopTime: values[fieldIndexes.LastSessionMaxLoopTime],
-                LastSessionMinHeap: values[fieldIndexes.LastSessionMinHeap],
-                WifiReconnectsThisSession: values[fieldIndexes.WifiReconnectsThisSession],
-                WifiReconnectsTotal: values[fieldIndexes.WifiReconnectsTotal],
-                CurrentSessionDuration: values[fieldIndexes.CurrentSessionDuration],
-                CurrentWifiSessionDuration: values[fieldIndexes.CurrentWifiSessionDuration],
-                LastResetReason: values[fieldIndexes.LastResetReason],
-                LastWifiResetReason: values[fieldIndexes.LastWifiResetReason],
-                ManualLifePercentage: values[fieldIndexes.ManualLifePercentage],
-                totalPowerCycles: values[fieldIndexes.totalPowerCycles]
+                AlternatorTemperatureF: values[0],  // 0
+                dutyCycle: values[1],               // 1
+                BatteryV: values[2],                // 2
+                MeasuredAmps: values[3],            // 3
+                RPM: values[4],                     // 4
+                Channel3V: values[5],               // 5
+                IBV: values[6],                     // 6
+                Bcur: values[7],                    // 7
+                VictronVoltage: values[8],          // 8
+                LoopTime: values[9],                // 9
+                WifiStrength: values[10],           // 10
+                WifiHeartBeat: values[11],          // 11
+                SendWifiTime: values[12],           // 12
+                AnalogReadTime: values[13],         // 13
+                VeTime: values[14],                 // 14
+                MaximumLoopTime: values[15],        // 15
+                HeadingNMEA: values[16],            // 16
+                vvout: values[17],                  // 17
+                iiout: values[18],                  // 18
+                FreeHeap: values[19],               // 19
+                EngineCycles: values[20],           // 20
+                Alarm_Status: values[21],          // 21
+                fieldActiveStatus: values[22],      // 22
+                CurrentSessionDuration: values[23], // 23
+                timeAxisModeChanging: values[24],   // 24 - PLOT CONTROL
+                webgaugesinterval: values[25],      // 25 - PLOT CONTROL
+                plotTimeWindow: values[26],         // 26 - PLOT CONTROL
+                Ymin1: values[27],                  // 27 - PLOT CONTROL
+                Ymax1: values[28],                  // 28 - PLOT CONTROL
+                Ymin2: values[29],                  // 29 - PLOT CONTROL
+                Ymax2: values[30],                  // 30 - PLOT CONTROL
+                Ymin3: values[31],                  // 31 - PLOT CONTROL
+                Ymax3: values[32],                  // 32 - PLOT CONTROL
+                Ymin4: values[33],                  // 33 - PLOT CONTROL
+                Ymax4: values[34],                  // 34 - PLOT CONTROL
+                currentMode: values[35],             // 35 - DEVICE MODE 
+                currentPartitionType: values[36]     // 36 - PARTITION TYPE
 
             };
 
-            window._debugData = data;
+            // Track the interval for toggle functionality
+            if (data.webgaugesinterval) {
+                window._lastKnownInterval = data.webgaugesinterval;
+            }
+            if (data.plotTimeWindow) {
+                window._lastKnownTimeWindow = data.plotTimeWindow;
+            }
+            //i'm in the CSV handler here
+            // Configuration check logic 
+            configCheckCounter++;
+            const checkInterval = getConfigCheckInterval(data.webgaugesinterval);
 
-            // Check for stale data and apply visual effects
-            if (window.sensorAges) {
-
-                // Helper function to apply staleness styling using age directly
-                function applyStaleStyleByAge(elementId, ageMs) {
-                    const element = document.getElementById(elementId);
-                    if (!element) {
-                        console.warn(`Element ${elementId} not found for stale styling`);
-                        return;
-                    }
-                    const staleThreshold = 7100; // 7.1 seconds, don't go lower without making sure digital temp sensor tempTask is going to keep up
-                    const isStale = (ageMs > staleThreshold);
-                    if (isStale) {
-                        element.style.opacity = "0.4";
-                        element.style.color = "#999999";
-                        element.style.fontStyle = "italic";
-                        element.title = `Data is ${Math.round(ageMs / 1000)} seconds old`;
-                    } else {
-                        element.style.opacity = "1.0";
-                        element.style.color = "var(--reading)";
-                        element.style.fontStyle = "normal";
-                        element.title = "";
-                    }
-                }
-
-                // Apply staleness using ages directly 
-                applyStaleStyleByAge("GPSHID", window.sensorAges.heading);                      // GPS heading
-                applyStaleStyleByAge("LatitudeNMEA_ID", window.sensorAges.latitude);            // GPS latitude
-                applyStaleStyleByAge("LongitudeNMEA_ID", window.sensorAges.longitude);          // GPS longitude
-                applyStaleStyleByAge("SatelliteCountNMEA_ID", window.sensorAges.satellites);    // GPS satellite count
-                applyStaleStyleByAge("VictronVoltageID", window.sensorAges.victronVoltage);     // Victron voltage
-                applyStaleStyleByAge("VictronCurrentID", window.sensorAges.victronCurrent);     // Victron current
-                applyStaleStyleByAge("AltTempID", window.sensorAges.alternatorTemp);            // Alternator temperature
-                applyStaleStyleByAge("temperatureThermistorID", window.sensorAges.thermistorTemp); // Thermistor temperature
-                applyStaleStyleByAge("RPMID", window.sensorAges.rpm);                           // Engine RPM
-                applyStaleStyleByAge("MeasAmpsID", window.sensorAges.measuredAmps);             // Alternator current
-                applyStaleStyleByAge("BatteryVID", window.sensorAges.batteryV);                 // ADS battery voltage
-                applyStaleStyleByAge("IBVID", window.sensorAges.ibv);                           // INA battery voltage
-                applyStaleStyleByAge("BCurrID", window.sensorAges.bcur);                        // Battery current
-                applyStaleStyleByAge("ADS3ID", window.sensorAges.channel3V);                    // ADS Channel 3 voltage
-                applyStaleStyleByAge("DutyCycleID", window.sensorAges.dutyCycle);               // Field duty cycle
-                applyStaleStyleByAge("FieldVoltsID", window.sensorAges.fieldVolts);             // Field voltage (calculated)
-                applyStaleStyleByAge("FieldAmpsID", window.sensorAges.fieldAmps);               // Field current (calculated)
-
-                //banner
-                applyStaleStyleByAge("header-voltage", window.sensorAges.ibv);
-                applyStaleStyleByAge("header-soc", window.sensorAges.soc);
-                applyStaleStyleByAge("header-alt-current", window.sensorAges.measuredAmps);
-                applyStaleStyleByAge("header-batt-current", window.sensorAges.bcur);
-                applyStaleStyleByAge("header-alt-temp", window.sensorAges.alternatorTemp);
-                applyStaleStyleByAge("header-rpm", window.sensorAges.rpm);
-
+            //load the current software update versions avaialble 
+            if (data.currentMode !== undefined) {
+                window._lastKnownMode = data.currentMode;
             }
 
-            updateAlarmStatus(data);
+            if (configCheckCounter >= checkInterval) {
+                configCheckCounter = 0; // Reset counter
+                updatePlotConfiguration(data);
+            }
 
+            // Cache mode for other functions to use
+            if (data.currentMode !== undefined) {
+                window._lastKnownMode = data.currentMode;
+            }
+            window._debugData = data;
             const fieldIndicator = document.getElementById('field-status');
             if (fieldIndicator) {
+                // Static variable to track last log time (persists between function calls)
+                if (!fieldIndicator.lastLogTime) {
+                    fieldIndicator.lastLogTime = 0;
+                }
+
+                const now = Date.now();
+                const shouldLog = (now - fieldIndicator.lastLogTime) > 10000; // 10 seconds
+
                 if (data.fieldActiveStatus === 1) {
                     fieldIndicator.textContent = 'ACTIVE';
                     fieldIndicator.className = 'reading-value field-status-active';
+
+                    if (shouldLog) {
+                        //   console.log('Field Status: ACTIVE - Field control enabled and operating');
+                        fieldIndicator.lastLogTime = now;
+                    }
                 } else {
                     fieldIndicator.textContent = 'OFF';
                     fieldIndicator.className = 'reading-value field-status-inactive';
+
+                    if (shouldLog) {
+                        //  console.log('Field Status: OFF - Field control disabled or below minimum duty');
+                        fieldIndicator.lastLogTime = now;
+                    }
                 }
             }
 
-            let lastValues = {};
-
-            // Modify your existing updateFields with MINIMAL changes:
-            // Enhanced updateFields function that handles reset reason lookups
+            // Enhanced updateFields 
             const updateFields = (fieldArray) => {
                 for (const [elementId, key] of fieldArray) {
-                    const el = document.getElementById(elementId);
-                    if (!el) continue;
                     const value = data[key];
-
+                    if (value === undefined) continue;
                     // Calculate what the new text content would be
                     let newTextContent;
-                    if (value === undefined || isNaN(value)) {
+                    if (isNaN(value)) {
                         newTextContent = "—";
                     }
-                    // Special handling for reset reason lookups
-                    else if (key === "LastResetReason") {
-                        newTextContent = resetReasonLookup[value] || `Unknown (${value})`;
-                    }
-                    else if (key === "LastWifiResetReason") {
-                        newTextContent = wifiResetReasonLookup[value] || `Unknown WiFi issue (${value})`;
-                    }
                     // Values scaled by 100 on server (existing logic)
-                    else if (["BatteryV", "Channel3V", "IBV", "VictronVoltage", "vvout", "FullChargeVoltage", "VictronCurrent",
-                        "TargetFloatVoltage", "IBVMax", "Bcur", "MeasuredAmps", "MeasuredAmpsMax", "SoC_percent", "AlternatorCOffset", "BatteryCOffset", "R_fixed", "Beta", "T0_C"].includes(key)) {
+                    else if (["BatteryV", "MeasuredAmps", "Bcur", "Channel3V", "IBV", "VictronVoltage", "vvout"].includes(key)) {
                         newTextContent = (value / 100).toFixed(2);
                     }
                     // Values scaled by 10 on server (existing logic)  
                     else if (["iiout"].includes(key)) {
                         newTextContent = (value / 10).toFixed(1);
                     }
-                    // Energy values (existing logic)
+                    // Special handling for currentMode
+                    else if (key === "currentMode") {
+                        const modeNames = ["CONFIG", "AP", "CLIENT"];
+                        newTextContent = modeNames[value] || `Unknown (${value})`;
+                    }
+                    // Special handling for currentPartitionType
+                    else if (key === "currentPartitionType") {
+                        const partitionNames = ["Factory Golden", "User Updateable"];
+                        newTextContent = partitionNames[value] || `Unknown (${value})`;
+                    }
+                    // Default: display as integer (existing logic)
+                    else {
+                        newTextContent = Math.round(value);
+                    }
+                    // ONLY UPDATE DOM IF VALUE ACTUALLY CHANGED
+                    const cacheKey = `${elementId}_${key}`;
+                    if (lastValues.get(cacheKey) !== newTextContent) {
+                        lastValues.set(cacheKey, newTextContent);
+                        scheduleDOMUpdateOptimized(elementId, newTextContent);
+                    }
+                }
+            };
+
+
+            // Counter for echo throttling (separate from display throttling)
+            if (typeof window.echoUpdateCounter === 'undefined') window.echoUpdateCounter = 0;
+
+            // Add counter for throttling
+            if (typeof window.updateCounter === 'undefined') window.updateCounter = 0;
+            window.updateCounter++;
+
+            // Critical fields - update every cycle (real-time) - ONLY original critical fields that are in payload1
+            const criticalFields = [
+                ["MeasAmpsID", "MeasuredAmps"],          // Alternator Current 
+                ["BatteryVID", "BatteryV"],              // ADS Battery Voltage 
+                ["IBVID", "IBV"],                        // INA Battery Voltage 
+                ["BCurrID", "Bcur"],                     // Battery Current 
+                ["RPMID", "RPM"],                        // Engine Speed 
+                ["RPMID2", "RPM"],     // have to use 2 because it appears in two HTML displays (Dumb rule)
+                ["LoopTimeID", "LoopTime"],              // Loop Time 
+                ["WifiHeartBeatID", "WifiHeartBeat"],     // WifiHeartbeat 
+                ["ADS3ID", "Channel3V"],
+                ["FieldVoltsID", "vvout"],
+                ["FieldVoltsID2", "vvout"], // have to use 2 because it appears in two HTML displays (Dumb rule)
+                ["FieldAmpsID", "iiout"],
+                ["FieldAmpsID2", "iiout"],// have to use 2 because it appears in two HTML displays (Dumb rule)
+                ["FreeHeapID", "FreeHeap"]
+            ];
+
+
+            // Update alarm status, this is GPIO21 buzzer/alarm
+            updateAlarmStatus(data);
+
+            // Other fields - update every 4th cycle - ALL remaining payload1 variables (were non-critical OR new)
+            const otherFields = [
+                ["AltTempID", "AlternatorTemperatureF"],
+                ["dutyCycleID", "dutyCycle"],
+                ["dutyCycleID2", "dutyCycle"], // have to use 2 because it appears in two HTML displays (Dumb rule)
+                ["VictronVoltageID", "VictronVoltage"],
+                ["SendWifiTimeID", "SendWifiTime"],
+                ["AnalogReadTimeID", "AnalogReadTime"],
+                ["VeTimeID", "VeTime"],
+                ["MaximumLoopTimeID", "MaximumLoopTime"],
+                ["HeadingNMEAID", "HeadingNMEA"],
+                ["EngineCyclesID", "EngineCycles"],
+                ["header-voltage", "IBV"],
+                ["header-alt-current", "MeasuredAmps"],
+                ["header-batt-current", "Bcur"],
+                ["header-alt-temp", "AlternatorTemperatureF"],
+                ["header-rpm", "RPM"],
+                ["WifiStrengthID", "WifiStrength"],
+                ["CurrentSessionDurationID", "CurrentSessionDuration"],
+                ["currentModeID", "currentMode"],
+                ["currentPartitionTypeID", "currentPartitionType"]
+
+            ];
+
+            // Update critical fields every cycle
+            updateFields(criticalFields);
+            processCSVDataOptimized(data); // this is for plotting
+
+            // Update other stuff every 4th cycle
+            if (window.updateCounter % 4 === 0) {
+                updateFields(otherFields);
+                updateAllEchosOptimized(data);
+                updateTogglesFromData(data);
+            }
+
+            // One-time check to hide tabs in AP mode
+            if (typeof window.tabsProcessed === 'undefined') {
+                window.tabsProcessed = false;
+            }
+
+            if (!window.tabsProcessed && data.currentMode !== undefined) {
+                window.tabsProcessed = true;
+
+                // MODE_AP = 1, hide internet-dependent features
+                if (data.currentMode === 1) {
+                    const softwareTab = document.querySelector('.sub-tab[onclick*="softwareupdate"]');
+                    if (softwareTab) {
+                        softwareTab.style.display = 'none';
+                    }
+
+                    const weatherTab = document.querySelector('.sub-tab[onclick*="weather"]');
+                    if (weatherTab) {
+                        weatherTab.style.display = 'none';
+                    }
+
+                    console.log('AP mode detected - internet-dependent tabs hidden');
+                }
+            }
+
+            // Update learning table editability immediately when mode changes
+            // (Don't wait for 4th cycle - user needs instant visual feedback)
+            if (data.LearningMode !== undefined) {
+                const checkbox = document.getElementById("LearningMode_checkbox");
+                if (checkbox) {
+                    const currentUIState = checkbox.checked;
+                    const incomingState = (data.LearningMode === 1);
+
+                    // Only update editability if mode actually changed
+                    if (currentUIState !== incomingState) {
+                        updateLearningTableEditability(incomingState);
+                    }
+                }
+            }
+
+            // Keep critical state updates on every cycle
+            if (currentAdminPassword === "") {
+                document.getElementById('settings-section').classList.add("locked");
+            }
+
+            // Connection status check
+            const nowMs = Date.now();
+            const timeSinceLastEvent = nowMs - lastEventTime;
+            if (timeSinceLastEvent > 5000) {
+                updateInlineStatus(false);
+            } else {
+                updateInlineStatus(true);
+            }
+        }, false);
+
+        source.addEventListener('CSVData2', function (e) {
+            // Parse CSV data into an array
+            const values = e.data.split(',').map(Number);
+
+            // CSVData2 has 90 values
+            if (values.length !== 90) {
+                // Throttle CSV mismatch warnings to every 10 seconds
+                if (!window.lastCsv2WarningTime) window.lastCsv2WarningTime = 0;
+                const now = Date.now();
+
+                if ((now - window.lastCsv2WarningTime) > 10000) { // 10 seconds
+                    console.warn(`CSV2 mismatch: Got ${values.length} values but expected 90 fields for CSVData2`);
+                    console.warn("First few values:", values.slice(0, 10));
+                    console.warn("Last few values:", values.slice(-10));
+                    window.lastCsv2WarningTime = now;
+                }
+                return;
+            }
+            //CSVData2  
+            const data = {
+                IBVMax: values[0],                      // 0
+                MeasuredAmpsMax: values[1],             // 1
+                RPMMax: values[2],                      // 2
+                SOC_percent: values[3],                 // 3
+                EngineRunTime: values[4],               // 4
+                AlternatorOnTime: values[5],            // 5
+                AlternatorFuelUsed: values[6],          // 6
+                ChargedEnergy: values[7],               // 7
+                DischargedEnergy: values[8],            // 8
+                AlternatorChargedEnergy: values[9],     // 9
+                MaxAlternatorTemperatureF: values[10],  // 10
+                temperatureThermistor: values[11],      // 11
+                MaxTemperatureThermistor: values[12],   // 12
+                VictronCurrent: values[13],             // 13
+                timeToFullChargeMin: values[14],        // 14
+                timeToFullDischargeMin: values[15],     // 15
+                LatitudeNMEA: values[16],               // 16
+                LongitudeNMEA: values[17],              // 17
+                SatelliteCountNMEA: values[18],         // 18
+                bulkCompleteTime: values[19],           // 19
+                LastSessionDuration: values[20],        // 20
+                LastSessionMaxLoopTime: values[21],     // 21
+                lastSessionMinHeap: values[22],         // 22
+                wifiReconnectsTotal: values[23],        // 23 -  
+                LastResetReason: values[24],            // 24 -  
+                ancientResetReason: values[25],         // 25 - 
+                totalPowerCycles: values[26],           // 26 -  
+                MinFreeHeap: values[27],                // 27 - 
+                currentWeatherMode: values[28],         // 28 - 
+                UVToday: values[29],                    // 29 - 
+                UVTomorrow: values[30],                 // 30 -  
+                UVDay2: values[31],                     // 31 -  
+                weatherDataValid: values[32],           // 32 -  
+                SolarWatts: values[33],                 // 33 -  
+                performanceRatio: values[34],           // 34 -  
+                OnOff: values[35],                      // 35 -  
+                ManualFieldToggle: values[36],          // 36 -  
+                HiLow: values[37],                      // 37 -  
+                LimpHome: values[38],                   // 38 -  
+                VeData: values[39],                     // 39 -  
+                NMEA0183Data: values[40],               // 40 - 
+                NMEA2KData: values[41],                 // 41 -  
+                AlarmActivate: values[42],              // 42 -  
+                TempAlarm: values[43],                  // 43 -  
+                VoltageAlarmHigh: values[44],           // 44 -  
+                VoltageAlarmLow: values[45],            // 45 -  
+                CurrentAlarmHigh: values[46],           // 46 -  
+                AlarmTest: values[47],                  // 47 -  
+                AlarmLatchEnabled: values[48],          // 48 -  
+                AlarmLatchState: values[49],            // 49 -  
+                ResetAlarmLatch: values[50],            // 50 -  
+                ForceFloat: values[51],                 // 51 -  
+                ResetTemp: values[52],                  // 52 -  
+                ResetVoltage: values[53],               // 53 -  
+                ResetCurrent: values[54],               // 54 -  
+                ResetEngineRunTime: values[55],         // 55 -  
+                ResetAlternatorOnTime: values[56],      // 56 -  
+                ResetEnergy: values[57],                // 57 - 
+                ManualSOCPoint: values[58],             // 58 - 
+                LearningMode: values[59],               // 59 - 
+                LearningPaused: values[60],             // 60 - 
+                IgnoreLearningDuringPenalty: values[61], // 61 - 
+                ShowLearningDebugMessages: values[62],  // 62 - 
+                LogAllLearningEvents: values[63],       // 63 -
+                EXTRA: values[64],    // 64 -
+                LearningDryRunMode: values[65],         // 65 - 
+                AutoSaveLearningTable: values[66],      // 66 - 
+                ResetLearningTable: values[67],
+                ClearOverheatHistory: values[68],
+                AutoShuntGainCorrection: values[69],
+                DynamicShuntGainFactor: values[70],
+                AutoAltCurrentZero: values[71],
+                DynamicAltCurrentZero: values[72],
+                InsulationLifePercent: values[73],
+                GreaseLifePercent: values[74],
+                BrushLifePercent: values[75],
+                PredictedLifeHours: values[76],
+                LifeIndicatorColor: values[77],
+                WindingTempOffset: values[78],
+                ManualLifePercentage: values[79],
+                UVThresholdHigh: values[80],
+                weatherModeEnabled: values[81],
+                pKwHrToday: values[82],
+                pKwHrTomorrow: values[83],
+                pKwHr2days: values[84],
+                ambientTemp: values[85],
+                baroPressure: values[86],
+                firmwareVersionInt: values[87],
+                deviceIdUpper: values[88],
+                deviceIdLower: values[89]
+            };
+
+            // Enhanced updateFields for CSVData2 - using your existing patterns
+            const updateFields = (fieldArray) => {
+                for (const [elementId, key] of fieldArray) {
+                    const value = data[key];
+                    if (value === undefined) continue;
+
+                    // Calculate what the new text content would be
+                    let newTextContent;
+                    if (isNaN(value)) {
+                        newTextContent = "—";
+                    }
+                    // Special handling for reset reason lookups
+                    else if (key === "LastResetReason") {
+                        newTextContent = resetReasonLookup[value] || `Unknown (${value})`;
+                    }
+                    else if (key === "ancientResetReason") {
+                        newTextContent = resetReasonLookup[value] || `Unknown (${value})`;
+                    }
+                    // Values scaled by 100 on server
+                    else if (["IBVMax", "MeasuredAmpsMax", "SOC_percent", "VictronCurrent", "performanceRatio", "UVThresholdHigh"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    // GPS coordinates scaled by 1,000,000 on server
+                    else if (["LatitudeNMEA", "LongitudeNMEA"].includes(key)) {
+                        newTextContent = (value / 1000000).toFixed(6);
+                    }
+                    // Energy values
                     else if (["ChargedEnergy", "DischargedEnergy", "AlternatorChargedEnergy"].includes(key)) {
                         newTextContent = value;
                     }
-                    // Fuel in mL (existing logic)
+                    // Fuel in mL
                     else if (["AlternatorFuelUsed"].includes(key)) {
                         newTextContent = (value / 1000).toFixed(3);
                     }
-                    // Time values (existing logic)
-                    else if (["EngineRunTime", "AlternatorOnTime"].includes(key)) {
-                        const totalSeconds = value; //
-                        const hours = Math.floor(totalSeconds / 3600);
-                        const minutes = Math.floor((totalSeconds % 3600) / 60);
-                        const seconds = totalSeconds % 60;
-                        newTextContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                    }
-                    // Session duration in minutes (new logic)
-                    else if (["LastSessionDuration", "CurrentSessionDuration", "CurrentWifiSessionDuration"].includes(key)) {
-                        if (value < 60) {
-                            newTextContent = `${value}`;  // Less than 1 hour, show minutes
-                        } else {
-                            const hours = Math.floor(value / 60);
-                            const minutes = value % 60;
-                            newTextContent = `${hours}h ${minutes}m`;
-                        }
-                    }
-                    // Cool dynamic adjustments (existing logic)
                     else if (["DynamicShuntGainFactor", "DynamicAltCurrentZero"].includes(key)) {
                         newTextContent = (value / 1000).toFixed(3);
                     }
-                    // Alternator life parameters (existing logic)
                     else if (["InsulationLifePercent", "GreaseLifePercent", "BrushLifePercent"].includes(key)) {
                         newTextContent = (value / 100).toFixed(1);
                     }
                     else if (["WindingTempOffset"].includes(key)) {
                         newTextContent = (value / 10).toFixed(1);
                     }
-                    else if (["PulleyRatio"].includes(key)) {
+                    else if (["pKwHrToday", "pKwHrTomorrow", "pKwHr2days"].includes(key)) {
                         newTextContent = (value / 100).toFixed(2);
                     }
-                    // Settings echo values (existing logic)
-                    else if (["TargetAmps", "TargetAmpL"].includes(key)) {
-                        newTextContent = value;
+                    // Time values
+                    else if (["EngineRunTime", "AlternatorOnTime"].includes(key)) {
+                        const totalSeconds = value;
+                        const hours = Math.floor(totalSeconds / 3600);
+                        const minutes = Math.floor((totalSeconds % 3600) / 60);
+                        const seconds = totalSeconds % 60;
+                        newTextContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                     }
-                    // Default: display as integer (existing logic)
+                    // Session duration in minutes
+                    else if (["LastSessionDuration"].includes(key)) {
+                        if (value < 60) {
+                            newTextContent = `${value}`;
+                        } else {
+                            const hours = Math.floor(value / 60);
+                            const minutes = value % 60;
+                            newTextContent = `${hours}h ${minutes}m`;
+                        }
+                    }
+                    // Default: display as integer
                     else {
                         newTextContent = Math.round(value);
                     }
 
-                    // ONLY UPDATE DOM IF VALUE ACTUALLY CHANGED
-                    if (lastValues[elementId] !== newTextContent) {
-                        el.textContent = newTextContent;
-                        lastValues[elementId] = newTextContent;
+                    // ONLY UPDATE DOM IF VALUE ACTUALLY CHANGED - using your existing pattern
+                    const cacheKey = `${elementId}_${key}`;
+                    if (lastValues.get(cacheKey) !== newTextContent) {
+                        lastValues.set(cacheKey, newTextContent);
+                        scheduleDOMUpdateOptimized(elementId, newTextContent);
                     }
                 }
             };
 
-            updateFields(telemetryFields);  // only visible span updates
-            updateLifeIndicators(data); // for the alternator lifetime calculation
 
-            // document.getElementById('header-alternator-enable').checked = (data.OnOff === 1); // no idea, don't ask
+            // Other fields for CSVData2 - update every cycle (no throttling since server controls timing)
+            const otherFields = [
+                ["IBVMaxID", "IBVMax"],
+                ["MeasuredAmpsMaxID", "MeasuredAmpsMax"],
+                ["RPMMaxID", "RPMMax"],
+                ["EngineRunTimeID", "EngineRunTime"],
+                ["AlternatorOnTimeID", "AlternatorOnTime"],
+                ["AlternatorFuelUsedID", "AlternatorFuelUsed"],
+                ["ChargedEnergyID", "ChargedEnergy"],
+                ["DischargedEnergyID", "DischargedEnergy"],
+                ["AlternatorChargedEnergyID", "AlternatorChargedEnergy"],
+                ["MaxAlternatorTemperatureF_ID", "MaxAlternatorTemperatureF"],
+                ["temperatureThermistorID", "temperatureThermistor"],
+                ["MaxTemperatureThermistorID", "MaxTemperatureThermistor"],
+                ["VictronCurrentID", "VictronCurrent"],
+                ["LatitudeNMEA_ID", "LatitudeNMEA"],
+                ["LongitudeNMEA_ID", "LongitudeNMEA"],
+                ["SatelliteCountNMEA_ID", "SatelliteCountNMEA"],
+                ["timeToFullChargeMinID", "timeToFullChargeMin"],
+                ["timeToFullDischargeMinID", "timeToFullDischargeMin"],
+                ["LastSessionDurationID", "LastSessionDuration"],
+                ["LastSessionMaxLoopTimeID", "LastSessionMaxLoopTime"],
+                ["lastSessionMinHeapID", "lastSessionMinHeap"],
+                ["wifiReconnectsTotalID", "wifiReconnectsTotal"],
+                ["LastResetReasonID", "LastResetReason"],
+                ["ancientResetReasonID", "ancientResetReason"],
+                ["totalPowerCyclesID", "totalPowerCycles"],
+                ["MinFreeHeapID", "MinFreeHeap"],
+                ["UVTodayID", "UVToday"],
+                ["UVTomorrowID", "UVTomorrow"],
+                ["UVDay2ID", "UVDay2"],
+                ["weatherDataValidID", "weatherDataValid"],
+                ["DynamicShuntGainFactor_display", "DynamicShuntGainFactor"],
+                ["DynamicAltCurrentZero_display", "DynamicAltCurrentZero"],
+                ["InsulationLifePercentID", "InsulationLifePercent"],
+                ["GreaseLifePercentID", "GreaseLifePercent"],
+                ["BrushLifePercentID", "BrushLifePercent"],
+                ["PredictedLifeHoursID", "PredictedLifeHours"],
+                ["pKwHrToday_ID", "pKwHrToday"],
+                ["pKwHrTomorrow_ID", "pKwHrTomorrow"],
+                ["pKwHr2days_ID", "pKwHr2days"],
+                ["SOC_percentID", "SOC_percent"],
+                ["header-soc", "SOC_percent"],
+                ["ambientTempID", "ambientTemp"],
+                ["baroPressureID", "baroPressure"],
+                ["firmwareVersionIntID", "firmwareVersionInt"],
+                ["deviceIdUpperID", "deviceIdUpper"],
+                ["deviceIdLowerID", "deviceIdLower"]
 
-            if ('TemperatureLimitF' in data) {
-                document.getElementById('TemperatureLimitF_echo').textContent = data.TemperatureLimitF;
-            }
-            if ('FullChargeVoltage' in data) {
-                document.getElementById('FullChargeVoltage_echo').textContent = (data.FullChargeVoltage / 100).toFixed(2);
-            }
-            if ('TargetAmps' in data) {
-                document.getElementById('TargetAmps_echo').textContent = data.TargetAmps;
-            }
-            if ('TargetFloatVoltage' in data) {
-                document.getElementById('TargetFloatVoltage_echo').textContent = (data.TargetFloatVoltage / 100).toFixed(2);
-            }
-            if ('SwitchingFrequency' in data) {
-                document.getElementById('SwitchingFrequency_echo').textContent = data.SwitchingFrequency;
-            }
-            if ('interval' in data) {
-                document.getElementById('interval_echo').textContent = (data.interval / 100).toFixed(3);
-            }
-            if ('FieldAdjustmentInterval' in data) {
-                document.getElementById('FieldAdjustmentInterval_echo').textContent = data.FieldAdjustmentInterval;
-            }
-            if ('ManualDuty' in data) {
-                document.getElementById('ManualDuty_echo').textContent = data.ManualDuty;
-            }
-            if ('SwitchControlOverride' in data) {
-                document.getElementById('SwitchControlOverride_echo').textContent = data.SwitchControlOverride;
-            }
-            if ('OnOff' in data) {
-                document.getElementById('OnOff_echo').textContent = data.OnOff;
-            }
-            if ('ManualFieldToggle' in data) {
-                document.getElementById('ManualFieldToggle_echo').textContent = data.ManualFieldToggle;
-            }
-            if ('HiLow' in data) {
-                document.getElementById('HiLow_echo').textContent = data.HiLow;
-            }
-            if ('LimpHome' in data) {
-                document.getElementById('LimpHome_echo').textContent = data.LimpHome;
-            }
-            if ('VeData' in data) {
-                document.getElementById('VeData_echo').textContent = data.VeData;
-            }
-            if ('NMEA0183Data' in data) {
-                document.getElementById('NMEA0183Data_echo').textContent = data.NMEA0183Data;
-            }
-            if ('NMEA2KData' in data) {
-                document.getElementById('NMEA2KData_echo').textContent = data.NMEA2KData;
-            }
-            if ('TargetAmpL' in data) {
-                document.getElementById('TargetAmpL_echo').textContent = data.TargetAmpL;
-            }
-            if ('CurrentThreshold' in data) {
-                document.getElementById('CurrentThreshold_echo').textContent = data.CurrentThreshold;
-            }
-            if ('PeukertExponent' in data) {
-                document.getElementById('PeukertExponent_echo').textContent = (data.PeukertExponent / 100).toFixed(2);
-            }
-            if ('ChargeEfficiency' in data) {
-                document.getElementById('ChargeEfficiency_echo').textContent = data.ChargeEfficiency + '%';
-            }
-            if ('ChargedVoltage' in data) {
-                document.getElementById('ChargedVoltage_echo').textContent = (data.ChargedVoltage / 100).toFixed(2);
-            }
-            if ('TailCurrent' in data) {
-                document.getElementById('TailCurrent_echo').textContent = data.TailCurrent;
-            }
-            if ('ChargedDetectionTime' in data) {
-                document.getElementById('ChargedDetectionTime_echo').textContent = data.ChargedDetectionTime;
-            }
-            if ('IgnoreTemperature' in data) {
-                document.getElementById('IgnoreTemperature_echo').textContent = data.IgnoreTemperature;
-            }
-            if ('BMSLogic' in data) {
-                document.getElementById('BMSLogic_echo').textContent = data.BMSLogic;
-            }
-            if ('BMSLogicLevelOff' in data) {
-                document.getElementById('BMSLogicLevelOff_echo').textContent = data.BMSLogicLevelOff;
-            }
-            if ('AlarmActivate' in data) {
-                document.getElementById('AlarmActivate_echo').textContent = data.AlarmActivate;
-            }
-            if ('TempAlarm' in data) {
-                document.getElementById('TempAlarm_echo').textContent = data.TempAlarm;
-            }
-            if ('VoltageAlarmHigh' in data) {
-                document.getElementById('VoltageAlarmHigh_echo').textContent = data.VoltageAlarmHigh;
-            }
-            if ('VoltageAlarmLow' in data) {
-                document.getElementById('VoltageAlarmLow_echo').textContent = data.VoltageAlarmLow;
-            }
-            if ('CurrentAlarmHigh' in data) {
-                document.getElementById('CurrentAlarmHigh_echo').textContent = data.CurrentAlarmHigh;
-            }
-            if ('FourWay' in data) {
-                document.getElementById('FourWay_echo').textContent = data.FourWay;
-            }
-            if ('RPMScalingFactor' in data) {
-                document.getElementById('RPMScalingFactor_echo').textContent = data.RPMScalingFactor;
-            }
-            if ('ResetTemp' in data) {
-                document.getElementById('ResetTemp_echo').textContent = data.ResetTemp;
-            }
-            if ('ResetVoltage' in data) {
-                document.getElementById('ResetVoltage_echo').textContent = data.ResetVoltage;
-            }
-            if ('ResetCurrent' in data) {
-                document.getElementById('ResetCurrent_echo').textContent = data.ResetCurrent;
-            }
-            if ('ResetEngineRunTime' in data) {
-                document.getElementById('ResetEngineRunTime_echo').textContent = data.ResetEngineRunTime;
-            }
-            if ('ResetAlternatorOnTime' in data) {
-                document.getElementById('ResetAlternatorOnTime_echo').textContent = data.ResetAlternatorOnTime;
-            }
-            if ('ResetEnergy' in data) {
-                document.getElementById('ResetEnergy_echo').textContent = data.ResetEnergy;
-            }
-            if ('MaximumAllowedBatteryAmps' in data) {
-                document.getElementById('MaximumAllowedBatteryAmps_echo').textContent = (data.MaximumAllowedBatteryAmps);
-            }
-            if ('ManualSOCPoint' in data) {
-                document.getElementById('ManualSOCPoint_echo').textContent = data.ManualSOCPoint;
-            }
-            if ('BatteryVoltageSource' in data) {
-                document.getElementById('BatteryVoltageSource_echo').textContent = data.BatteryVoltageSource;
-            }
-            if ('AmpControlByRPM' in data) {
-                document.getElementById('AmpControlByRPM_echo').textContent = data.AmpControlByRPM;
-            }
-            if ('RPM1' in data) {
-                document.getElementById('RPM1_echo').textContent = data.RPM1;
-            }
-            if ('RPM2' in data) {
-                document.getElementById('RPM2_echo').textContent = data.RPM2;
-            }
-            if ('RPM3' in data) {
-                document.getElementById('RPM3_echo').textContent = data.RPM3;
-            }
-            if ('RPM4' in data) {
-                document.getElementById('RPM4_echo').textContent = data.RPM4;
-            }
-            if ('Amps1' in data) {
-                document.getElementById('Amps1_echo').textContent = data.Amps1;
-            }
-            if ('Amps2' in data) {
-                document.getElementById('Amps2_echo').textContent = data.Amps2;
-            }
-            if ('Amps3' in data) {
-                document.getElementById('Amps3_echo').textContent = data.Amps3;
-            }
-            if ('Amps4' in data) {
-                document.getElementById('Amps4_echo').textContent = data.Amps4;
-            }
-            if ('RPM5' in data) {
-                document.getElementById('RPM5_echo').textContent = data.RPM5;
-            }
-            if ('RPM6' in data) {
-                document.getElementById('RPM6_echo').textContent = data.RPM6;
-            }
-            if ('RPM7' in data) {
-                document.getElementById('RPM7_echo').textContent = data.RPM7;
-            }
-            if ('Amps5' in data) {
-                document.getElementById('Amps5_echo').textContent = data.Amps5;
-            }
-            if ('Amps6' in data) {
-                document.getElementById('Amps6_echo').textContent = data.Amps6;
-            }
-            if ('Amps7' in data) {
-                document.getElementById('Amps7_echo').textContent = data.Amps7;
-            }
-            if ('ShuntResistanceMicroOhm' in data) {
-                document.getElementById('ShuntResistanceMicroOhm_echo').textContent = data.ShuntResistanceMicroOhm;
-            }
-            if ('InvertAltAmps' in data) {
-                document.getElementById('InvertAltAmps_echo').textContent = data.InvertAltAmps;
-            }
-            if ('InvertBattAmps' in data) {
-                document.getElementById('InvertBattAmps_echo').textContent = data.InvertBattAmps;
-            }
-            if ('MaxDuty' in data) {
-                document.getElementById('MaxDuty_echo').textContent = data.MaxDuty;
-            }
-            if ('MinDuty' in data) {
-                document.getElementById('MinDuty_echo').textContent = data.MinDuty;
-            }
-            if ('FieldResistance' in data) {
-                document.getElementById('FieldResistance_echo').textContent = data.FieldResistance;
-            }
-            if ('maxPoints' in data) {
-                document.getElementById('maxPoints_echo').textContent = data.maxPoints;
-            }
-            if ('AlternatorCOffset' in data) {
-                document.getElementById('AlternatorCOffset_echo').textContent = (data.AlternatorCOffset / 100).toFixed(2);
-            }
-            if ('BatteryCOffset' in data) {
-                document.getElementById('BatteryCOffset_echo').textContent = (data.BatteryCOffset / 100).toFixed(2);
-            }
-            if ('BatteryCapacity_Ah' in data) {
-                document.getElementById('BatteryCapacity_Ah_echo').textContent = data.BatteryCapacity_Ah;
-            }
-            if ('R_fixed' in data) {
-                document.getElementById('R_fixed_echo').textContent = (data.R_fixed / 100).toFixed(2);
-            }
-            if ('Beta' in data) {
-                document.getElementById('Beta_echo').textContent = (data.Beta / 100).toFixed(2);
-            }
-            if ('T0_C' in data) {
-                document.getElementById('T0_C_echo').textContent = (data.T0_C / 100).toFixed(2);
-            }
-            if ('TempSource' in data) {
-                document.getElementById('TempSource_echo').textContent = data.TempSource;
-            }
-            if ('IgnitionOverride' in data) {
-                document.getElementById('IgnitionOverride_echo').textContent = data.IgnitionOverride;
-            }
-            if ('AmpSrc' in data) {
-                document.getElementById('AmpSrc_echo').textContent = data.AmpSrc;
-            }
-            if ('AlarmLatchEnabled' in data) {
-                document.getElementById('AlarmLatchEnabled_echo').textContent = data.AlarmLatchEnabled;
-            }
-            if ('AlarmTest' in data) {
-                document.getElementById('AlarmTest_echo').textContent = data.AlarmTest;
-            }
-            if ('ResetAlarmLatch' in data) {
-                document.getElementById('ResetAlarmLatch_echo').textContent = data.ResetAlarmLatch;
-            }
-            if ('ForceFloat' in data) {
-                document.getElementById('ForceFloat_echo').textContent = data.ForceFloat;
-            }
-            if ('bulkCompleteTime' in data) {
-                document.getElementById('bulkCompleteTime_echo').textContent = data.bulkCompleteTime;
-            }
-            if ('FLOAT_DURATION' in data) {
-                document.getElementById('FLOAT_DURATION_echo').textContent = Math.round(data.FLOAT_DURATION / 3600);
-            }
-            if ('AutoShuntGainCorrection' in data) {
-                document.getElementById('AutoShuntGainCorrection_echo').textContent = data.AutoShuntGainCorrection; // BOOLEAN
-            }
-            if ('AutoAltCurrentZero' in data) {
-                document.getElementById('AutoAltCurrentZero_echo').textContent = data.AutoAltCurrentZero;
-            }
-            if ('WindingTempOffset' in data) {
-                document.getElementById('WindingTempOffset_echo').textContent = (data.WindingTempOffset / 10).toFixed(1);
-            }
-            if ('PulleyRatio' in data) {
-                document.getElementById('PulleyRatio_echo').textContent = (data.PulleyRatio / 100).toFixed(2);
-            }
-            if ('ManualLifePercentage' in data) {
-                document.getElementById('ManualLifePercentage_echo').textContent = data.ManualLifePercentage;
-            }
 
-            if ('DynamicShuntGainFactor' in data) {
-                const displayEl = document.getElementById('DynamicShuntGainFactor_display');
-                if (displayEl) {
-                    displayEl.textContent = (data.DynamicShuntGainFactor / 1000).toFixed(3);
+            ];
+            //CSVData2
+
+            // Update PID stuff
+            updateLearningStatus(data);
+
+            // Update other fields every cycle (no throttling)
+            updateFields(otherFields);
+
+            // Update echos every cycle (since CSVData3 already runs slowly at 2 seconds)
+            updateAllEchosOptimized(data);
+
+            // Update toggle states 
+            updateTogglesFromData(data);
+
+            // Update life indicators, this is for Alternator health 
+            updateLifeIndicators(data);
+
+            updateVersionInfo();
+
+
+        }, false);
+
+        source.addEventListener('CSVData3', function (e) {
+            const processingStart = performance.now();
+            // Parse CSV data into an array
+            const values = e.data.split(',').map(Number);
+
+            // CSVData3
+            if (values.length !== 125) {
+                // Throttle CSV mismatch warnings to every 10 seconds
+                if (!window.lastCsv3WarningTime) window.lastCsv3WarningTime = 0;
+                const now = Date.now();
+
+                if ((now - window.lastCsv3WarningTime) > 10000) { // 10 seconds
+                    console.warn(`CSV3 mismatch: Got ${values.length} values but expected 125 fields for CSVData3`);
+                    console.warn("First few values:", values.slice(0, 10));
+                    console.warn("Last few values:", values.slice(-10));
+                    window.lastCsv3WarningTime = now;
                 }
+                return;
             }
-            if ('DynamicAltCurrentZero' in data) {
-                const displayEl = document.getElementById('DynamicAltCurrentZero_display');
-                if (displayEl) {
-                    displayEl.textContent = (data.DynamicAltCurrentZero / 1000).toFixed(3) + ' A';
+            //CSVData3
+            const data = {
+                TemperatureLimitF: values[0],           // 0
+                BulkVoltage: values[1],                 // 1
+                TargetAmps: values[2],                  // 2
+                FloatVoltage: values[3],                // 3
+                SwitchingFrequency: values[4],          // 4
+                dutyStep: values[5],                    // 5
+                FieldAdjustmentInterval: values[6],     // 6
+                ManualDutyTarget: values[7],            // 7
+                SwitchControlOverride: values[8],       // 8
+                TargetAmpL: values[9],                  // 9
+                CurrentThreshold: values[10],           // 10
+                PeukertExponent: values[11],            // 11
+                ChargeEfficiency: values[12],           // 12
+                ChargedVoltage: values[13],             // 13
+                TailCurrent: values[14],                // 14
+                ChargedDetectionTime: values[15],       // 15
+                IgnoreTemperature: values[16],          // 16
+                bmsLogic: values[17],                   // 17
+                bmsLogicLevelOff: values[18],           // 18
+                FourWay: values[19],                    // 19
+                RPMScalingFactor: values[20],           // 20
+                MaximumAllowedBatteryAmps: values[21],  // 21
+                BatteryVoltageSource: values[22],       // 22
+                LearningUpwardEnabled: values[23],      // 23
+                LearningDownwardEnabled: values[24],    // 24
+                AlternatorNominalAmps: values[25],      // 25
+                LearningUpStep: values[26],             // 26
+                LearningDownStep: values[27],           // 27
+                AmbientTempCorrectionFactor: values[28], // 28
+                AmbientTempBaseline: values[29],        // 29
+                MinLearningInterval: values[30],        // 30
+                SafeOperationThreshold: values[31],     // 31
+                PidKp: values[32],                      // 32
+                PidKi: values[33],                      // 33
+                PidKd: values[34],                      // 34
+                PidSampleTime: values[35],              // 35
+                MaxTableValue: values[36],              // 36
+                MinTableValue: values[37],              // 37
+                MaxPenaltyPercent: values[38],          // 38
+                MaxPenaltyDuration: values[39],         // 39
+                NeighborLearningFactor: values[40],     // 40
+                LearningRPMSpacing: values[41],         // 41
+                LearningMemoryDuration: values[42],     // 42
+                EnableNeighborLearning: values[43],     // 43
+                EnableAmbientCorrection: values[44],    // 44
+                LearningFailsafeMode: values[45],       // 45
+                LearningTableSaveInterval: values[46],  // 46
+                rpmCurrentTable0: values[47],           // 47
+                rpmCurrentTable1: values[48],           // 48
+                rpmCurrentTable2: values[49],           // 49
+                rpmCurrentTable3: values[50],           // 50
+                rpmCurrentTable4: values[51],           // 51
+                rpmCurrentTable5: values[52],           // 52
+                rpmCurrentTable6: values[53],           // 53
+                rpmCurrentTable7: values[54],           // 54
+                rpmCurrentTable8: values[55],           // 55
+                rpmCurrentTable9: values[56],           // 56
+                currentRPMTableIndex: values[57],       // 57
+                pidInitialized: values[58],             // 58
+                ShuntResistanceMicroOhm: values[59],    // 59
+                InvertAltAmps: values[60],              // 60
+                InvertBattAmps: values[61],             // 61
+                MaxDuty: values[62],                    // 62
+                MinDuty: values[63],                    // 63
+                FieldResistance: values[64],            // 64
+                maxPoints: values[65],                  // 65
+                AlternatorCOffset: values[66],          // 66
+                BatteryCOffset: values[67],             // 67
+                BatteryCapacity_Ah: values[68],         // 68
+                AmpSrc: values[69],                     // 69
+                R_fixed: values[70],                    // 70
+                Beta: values[71],                       // 71
+                T0_C: values[72],                       // 72
+                TempSource: values[73],                 // 73
+                IgnitionOverride: values[74],           // 74
+                FLOAT_DURATION: values[75],             // 75
+                PulleyRatio: values[76],                // 76
+                BatteryCurrentSource: values[77],       // 77
+                overheatCount0: values[78],             // 78
+                overheatCount1: values[79],             // 79
+                overheatCount2: values[80],             // 80
+                overheatCount3: values[81],             // 81
+                overheatCount4: values[82],             // 82
+                overheatCount5: values[83],             // 83
+                overheatCount6: values[84],             // 84
+                overheatCount7: values[85],             // 85
+                overheatCount8: values[86],             // 86
+                overheatCount9: values[87],             // 87
+                safeHours0: values[88],                 // 88
+                safeHours1: values[89],                 // 89
+                safeHours2: values[90],                 // 90
+                safeHours3: values[91],                 // 91
+                safeHours4: values[92],                 // 92
+                safeHours5: values[93],                 // 93
+                safeHours6: values[94],                 // 94
+                safeHours7: values[95],                 // 95
+                safeHours8: values[96],                 // 96
+                safeHours9: values[97],                 // 97
+                totalLearningEvents: values[98],        // 98
+                totalOverheats: values[99],             // 99
+                totalSafeHours: values[100],            // 100
+                averageTableValue: values[101],         // 101
+                timeSinceLastOverheat: values[102],     // 102
+                learningTargetFromRPM: values[103],     // 103
+                ambientTempCorrection: values[104],     // 104
+                finalLearningTarget: values[105],       // 105
+                overheatingPenaltyTimer: values[106],   // 106
+                overheatingPenaltyAmps: values[107],    // 107
+                pidInput: values[108],                  // 108
+                pidSetpoint: values[109],               // 109
+                pidOutput: values[110],                 // 110
+                TempToUse: values[111],                 // 111
+                rpmTableRPMPoints0: values[112],        // 112
+                rpmTableRPMPoints1: values[113],        // 113
+                rpmTableRPMPoints2: values[114],        // 114
+                rpmTableRPMPoints3: values[115],        // 115
+                rpmTableRPMPoints4: values[116],        // 116
+                rpmTableRPMPoints5: values[117],        // 117
+                rpmTableRPMPoints6: values[118],        // 118
+                rpmTableRPMPoints7: values[119],        // 119
+                rpmTableRPMPoints8: values[120],        // 120
+                rpmTableRPMPoints9: values[121],        // 121
+                LearningSettlingPeriod: values[122],    // 122
+                LearningRPMChangeThreshold: values[123], // 123
+                LearningTempHysteresis: values[124]     // 124
+            };
+
+            if (data.pidSetpoint !== undefined && data.pidInput !== undefined) {
+                data.pidError = data.pidSetpoint / 100 - data.pidInput / 100; // scaling hack needs fixing later
+            }
+
+            // Enhanced updateFields for CSVData3 - using your existing patterns
+            const updateFields = (fieldArray) => {
+                for (const [elementId, key] of fieldArray) {
+                    const value = data[key];
+                    if (value === undefined) continue;
+
+                    // Calculate what the new text content would be
+                    let newTextContent;
+                    if (isNaN(value)) {
+                        newTextContent = "—";
+                    }
+                    // Values scaled by 100 on server
+                    else if (["BulkVoltage", "FloatVoltage", "CurrentThreshold"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    // Values scaled by 100 for learning system
+                    else if (["LearningUpStep", "LearningDownStep", "AmbientTempCorrectionFactor", "MaxTableValue", "MinTableValue", "MaxPenaltyPercent", "dutyStep"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    // Values scaled by 1000 for PID parameters
+                    else if (["PidKp", "PidKi", "PidKd", "MinLearningInterval", "SafeOperationThreshold", "NeighborLearningFactor"].includes(key)) {
+                        newTextContent = (value / 1000).toFixed(3);
+                    }
+                    // Values scaled by 1000 for time intervals
+                    else if (["timeSinceLastOverheat", "overheatingPenaltyTimer", "LearningSettlingPeriod", "MaxPenaltyDuration", "LearningTableSaveInterval"].includes(key)) {
+                        newTextContent = (value * 1000).toFixed(0);
+                    }
+                    // Values scaled by 86400000 for days
+                    else if (["LearningMemoryDuration"].includes(key)) {
+                        newTextContent = (value * 86400000).toFixed(0);
+                    }
+                    // Values scaled by 3600000 for hours (C divides by 3600000, so JS multiplies by 3600000)
+                    else if (key.startsWith("safeHours")) {
+                        newTextContent = (value * 3600000).toFixed(0);
+                    }
+                    // RPM Current Table values scaled by 100
+                    else if (key.startsWith("rpmCurrentTable")) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    else if (["AlternatorCOffset", "BatteryCOffset"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    else if (["R_fixed", "Beta", "T0_C"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    else if (["PulleyRatio"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    // Settings echo values
+                    else if (["TargetAmps", "TargetAmpL"].includes(key)) {
+                        newTextContent = value;
+                    }
+                    else if (["averageTableValue"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    else if (["learningTargetFromRPM", "ambientTempCorrection", "finalLearningTarget", "overheatingPenaltyAmps"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(2);
+                    }
+                    // Values scaled by 100 for PID system
+                    else if (["pidInput", "pidSetpoint", "pidOutput"].includes(key)) {
+                        newTextContent = (value / 100).toFixed(1);
+                    }
+                    else {
+                        newTextContent = Math.round(value);
+                    }
+                    // ONLY UPDATE DOM IF VALUE ACTUALLY CHANGED - using your existing pattern
+                    const cacheKey = `${elementId}_${key}`;
+                    if (lastValues.get(cacheKey) !== newTextContent) {
+                        lastValues.set(cacheKey, newTextContent);
+                        scheduleDOMUpdateOptimized(elementId, newTextContent);
+                    }
                 }
-            }
+            };
 
-            if ('BatteryCurrentSource' in data) {
-                document.getElementById('BatteryCurrentSource_echo').textContent = data.BatteryCurrentSource;
-            }
-            if ('InvertBatteryMonitorAmps' in data) {
-                document.getElementById('InvertBatteryMonitorAmps_echo').textContent = data.InvertBatteryMonitorAmps;
-            }
-            if ('webgaugesinterval' in data) {
-                document.getElementById('webgaugesinterval_echo').textContent = data.webgaugesinterval;
-            }
-            if ('plotTimeWindow' in data) {
-                document.getElementById('plotTimeWindow_echo').textContent = data.plotTimeWindow;
-            }
-            if ('totalPowerCycles' in data) {
-                const el = document.getElementById('totalPowerCyclesID');
-                if (el) el.textContent = data.totalPowerCycles;
-            }
 
-            if ('AlarmLatchState' in data) {
-                const latchDisplay = document.getElementById('AlarmLatchState_display');
-                if (data.AlarmLatchState === 1) {
-                    latchDisplay.textContent = 'LATCHED';
-                    latchDisplay.style.color = '#ff0000';
-                } else {
-                    latchDisplay.textContent = 'Normal';
-                    latchDisplay.style.color = 'var(--accent)';
-                }
-            }
+            // Other fields for CSVData3 - update every cycle (no throttling since server controls timing)
+            const otherFields = [
+                // Note: Many of these might not have corresponding HTML elements yet
+                // This list includes potential element IDs that might exist
 
-            // Initialize RPM/Amps fields once on page load
-            if (!rpmAmpsInitialized) {
-                const rpmAmpFields = [
-                    { name: "RPM1", id: "RPM1_input" },
-                    { name: "RPM2", id: "RPM2_input" },
-                    { name: "RPM3", id: "RPM3_input" },
-                    { name: "RPM4", id: "RPM4_input" },
-                    { name: "Amps1", id: "Amps1_input" },
-                    { name: "Amps2", id: "Amps2_input" },
-                    { name: "Amps3", id: "Amps3_input" },
-                    { name: "Amps4", id: "Amps4_input" },
-                    { name: "RPM5", id: "RPM5_input" },
-                    { name: "RPM6", id: "RPM6_input" },
-                    { name: "RPM7", id: "RPM7_input" },
-                    { name: "Amps5", id: "Amps5_input" },
-                    { name: "Amps6", id: "Amps6_input" },
-                    { name: "Amps7", id: "Amps7_input" }
-                ];
+                ["currentRPMTableIndex_display", "currentRPMTableIndex"],
+                ["currentRPMTableIndex_display2", "currentRPMTableIndex"], // another duplicate DOM item workaround (multiple html indicators for same variable)
+                ["pidInitialized_display", "pidInitialized"],
+                ["overheatCount0_display", "overheatCount0"],
+                ["overheatCount1_display", "overheatCount1"],
+                ["overheatCount2_display", "overheatCount2"],
+                ["overheatCount3_display", "overheatCount3"],
+                ["overheatCount4_display", "overheatCount4"],
+                ["overheatCount5_display", "overheatCount5"],
+                ["overheatCount6_display", "overheatCount6"],
+                ["overheatCount7_display", "overheatCount7"],
+                ["overheatCount8_display", "overheatCount8"],
+                ["overheatCount9_display", "overheatCount9"],
+                ["safeHours0_display", "safeHours0"],
+                ["safeHours1_display", "safeHours1"],
+                ["safeHours2_display", "safeHours2"],
+                ["safeHours3_display", "safeHours3"],
+                ["safeHours4_display", "safeHours4"],
+                ["safeHours5_display", "safeHours5"],
+                ["safeHours6_display", "safeHours6"],
+                ["safeHours7_display", "safeHours7"],
+                ["safeHours8_display", "safeHours8"],
+                ["safeHours9_display", "safeHours9"],
+                ["totalLearningEvents_display", "totalLearningEvents"],
+                ["totalOverheats_display", "totalOverheats"],
+                ["totalSafeHours_display", "totalSafeHours"],
+                ["averageTableValue_display", "averageTableValue"],
+                ["timeSinceLastOverheat_display", "timeSinceLastOverheat"],
+                ["learningTargetFromRPM_display", "learningTargetFromRPM"],
+                ["ambientTempCorrection_display", "ambientTempCorrection"],
+                ["finalLearningTarget_display", "finalLearningTarget"],
+                ["overheatingPenaltyTimer_display", "overheatingPenaltyTimer"],
+                ["overheatingPenaltyAmps_display", "overheatingPenaltyAmps"],
+                ["pidInput_display", "pidInput"],
+                ["pidSetpoint_display", "pidSetpoint"],
+                ["pidOutput_display", "pidOutput"],
+                ["pidError_display", "pidError"],
+                ["TempToUse_display", "TempToUse"],
+                ["LearningSettlingPeriod_display", "LearningSettlingPeriod"],
+                ["LearningRPMChangeThreshold_display", "LearningRPMChangeThreshold"],
+                ["LearningTempHysteresis_display", "LearningTempHysteresis"]
 
-                // Check if we have received actual data from ESP32 (not just initial zeros)
-                let hasValidData = false;
-                for (const field of rpmAmpFields) {
-                    if (data[field.name] !== undefined && data[field.name] > 0) {
-                        hasValidData = true;
-                        break;
+            ];
+
+            //CSVData3
+            updateFields(otherFields);
+            // Update learning table inputs
+            // CRITICAL: Read mode from incoming data, not DOM (which may be stale)
+            const learningModeActive = data.LearningMode === 1;
+
+            for (let i = 0; i < 10; i++) {
+                // RPM BREAKPOINTS: Only initialize once, never update during learning
+                // (These are fixed speed points, not learned values)
+                if (!window.learningTableInitialized) {
+                    const rpmInput = document.getElementById(`rpmTableRPMPoints${i}_input`);
+                    if (rpmInput && data[`rpmTableRPMPoints${i}`] !== undefined) {
+                        rpmInput.value = data[`rpmTableRPMPoints${i}`];
                     }
                 }
 
-                // Only initialize if we have real data from ESP32, or this is the first data packet
-                if (hasValidData || data.AlternatorTemperatureF !== undefined) {
-                    for (const field of rpmAmpFields) {
-                        const inputEl = document.getElementById(field.id);
-                        if (inputEl && data[field.name] !== undefined) {
-                            inputEl.value = data[field.name];
-                        }
+                // CURRENT LIMITS: Initialize once, then update during active learning
+                // (These are the learned values that change)
+                if (!window.learningTableInitialized || learningModeActive) {
+                    const currentInput = document.getElementById(`rpmCurrentTable${i}_input`);
+                    if (currentInput && data[`rpmCurrentTable${i}`] !== undefined) {
+                        currentInput.value = Math.round(data[`rpmCurrentTable${i}`] / 100);
                     }
-                    rpmAmpsInitialized = true;
                 }
             }
 
-            const now = Math.floor(Date.now() / 1000);
+            // Mark as initialized ONLY if we actually received valid table data
+            if (!window.learningTableInitialized) {
+                // Verify we got real data before locking the flag
+                const hasValidData = (data.rpmTableRPMPoints0 !== undefined &&
+                    data.rpmCurrentTable0 !== undefined);
 
-            updateTogglesFromData(data); // update toggle switches
-
-            // something to do with grayed out settings
-            if (currentAdminPassword === "") {
-                document.getElementById('settings-section').classList.add("locked");
-            }
-
-            // Update Current plot data arrays
-            if (typeof currentTempPlot !== 'undefined') {
-                const battCurrent = 'Bcur' in data ? parseFloat(data.Bcur) / 100 : null;
-                const altCurrent = 'MeasuredAmps' in data ? parseFloat(data.MeasuredAmps) / 100 : null;
-                const fieldCurrent = 'iiout' in data ? parseFloat(data.iiout) / 10 : null;
-                // const altTemp = 'AlternatorTemperatureF' in data ? parseFloat(data.AlternatorTemperatureF) : null;
-
-                currentTempData[0].push(now);
-                currentTempData[1].push(battCurrent);
-                currentTempData[2].push(altCurrent);
-                currentTempData[3].push(fieldCurrent);
-
-                //Ensure we always have a valid maxPoints, default to 40 if not set or invalid
-                const currentMaxPoints = (data.maxPoints && data.maxPoints > 0) ? data.maxPoints : 40;
-                if (currentTempData[0].length > currentMaxPoints) {
-                    currentTempData[0].shift();
-                    currentTempData[1].shift();
-                    currentTempData[2].shift();
-                    currentTempData[3].shift();
-                }
-            }
-
-            // Update Voltage plot data arrays
-            if (typeof voltagePlot !== 'undefined') {
-                const adsBattV = 'BatteryV' in data ? parseFloat(data.BatteryV) / 100 : null;
-                const inaBattV = 'IBV' in data ? parseFloat(data.IBV) / 100 : null;
-
-                voltageData[0].push(now);
-                voltageData[1].push(adsBattV);
-                voltageData[2].push(inaBattV);
-
-                // Ensure we always have a valid maxPoints, default to 40 if not set or invalid
-                const currentMaxPoints = (data.maxPoints && data.maxPoints > 0) ? data.maxPoints : 40;
-                if (voltageData[0].length > currentMaxPoints) {
-                    voltageData[0].shift();
-                    voltageData[1].shift();
-                    voltageData[2].shift();
-                }
-            }
-
-            // Update RPM plot data arrays
-            if (typeof rpmPlot !== 'undefined') {
-                const rpmValue = 'RPM' in data ? parseFloat(data.RPM) : null;
-
-                rpmData[0].push(now);
-                rpmData[1].push(rpmValue);
-
-                // Ensure we always have a valid maxPoints, default to 40 if not set or invalid
-                const currentMaxPoints = (data.maxPoints && data.maxPoints > 0) ? data.maxPoints : 40;
-                if (rpmData[0].length > currentMaxPoints) {
-                    rpmData[0].shift();
-                    rpmData[1].shift();
-                }
-            }
-
-            // Update Temperature plot data arrays
-            if (typeof temperaturePlot !== 'undefined') {
-                const altTemp = 'AlternatorTemperatureF' in data ? parseFloat(data.AlternatorTemperatureF) : null;
-
-                temperatureData[0].push(now);
-                temperatureData[1].push(altTemp);
-
-                // Ensure we always have a valid maxPoints, default to 40 if not set or invalid
-                const currentMaxPoints = (data.maxPoints && data.maxPoints > 0) ? data.maxPoints : 40;
-                if (temperatureData[0].length > currentMaxPoints) {
-                    temperatureData[0].shift();
-                    temperatureData[1].shift();
-                }
-            }
-
-            // Only update the plots if enough time has passed - now update all three plots
-            const nowMs = Date.now();
-            if (nowMs - lastPlotUpdate > PLOT_UPDATE_INTERVAL_MS) {
-                scheduleCurrentTempPlotUpdate();
-                scheduleVoltagePlotUpdate();
-                scheduleRPMPlotUpdate();
-                scheduleTemperaturePlotUpdate();
-
-                // Add connection status check here - it will run once per second with your other updates
-                const timeSinceLastEvent = nowMs - lastEventTime;
-                if (timeSinceLastEvent > 5000) { // 5 seconds without new data = disconnected
-                    updateInlineStatus(false);
+                if (hasValidData) {
+                    window.learningTableInitialized = true;
+                    console.log('Learning table initialized from ESP32 data');
                 } else {
-                    updateInlineStatus(true);
+                    console.log('Waiting for complete table data from ESP32...');
                 }
-
-                lastPlotUpdate = nowMs;
             }
+
+
+
+            updateAllEchosOptimized(data);
+            updateTogglesFromData(data);
+
+            // Update PID stuff
+            updateLearningTableHighlight(data);
+            updatePidInitializedDisplay(data);
+
+            const processingTime = performance.now() - processingStart;
+            if (processingTime > 5) { // ← ADD THIS LINE
+                console.log(`[CSV3] Processing took ${processingTime.toFixed(1)}ms`);
+            }
+
         }, false);
 
         source.addEventListener('TimestampData', function (e) {
@@ -2024,6 +3278,19 @@ window.addEventListener("load", function () {     //AM I IN
             el.setAttribute('stroke', gridColor);
         });
     }
+
+    /*     // Add this function for dark mode toggle
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('darkMode', isDark ? '1' : '0');
+        
+        // Update all existing plots for dark mode
+        if (currentTempPlot) updateUplotTheme(currentTempPlot);
+        if (voltagePlot) updateUplotTheme(voltagePlot);
+        if (rpmPlot) updateUplotTheme(rpmPlot);
+        if (temperaturePlot) updateUplotTheme(temperaturePlot);
+    } */
 
     // Improve legend appearance with clean lines and responsive spacing
     const style = document.createElement('style');
@@ -2078,26 +3345,121 @@ max-width: 100%;     /* allow full width on mobile */
     document.getElementById("NMEA0183Data_checkbox").checked = (document.getElementById("NMEA0183Data").value === "1");
     document.getElementById("NMEA2KData_checkbox").checked = (document.getElementById("NMEA2KData").value === "1");
     document.getElementById("IgnoreTemperature_checkbox").checked = (document.getElementById("IgnoreTemperature").value === "1");
-    document.getElementById("BMSLogic_checkbox").checked = (document.getElementById("BMSLogic").value === "1");
-    document.getElementById("BMSLogicLevelOff_checkbox").checked = (document.getElementById("BMSLogicLevelOff").value === "1");
+    document.getElementById("bmsLogic_checkbox").checked = (document.getElementById("bmsLogic").value === "1");
+    document.getElementById("bmsLogicLevelOff_checkbox").checked = (document.getElementById("bmsLogicLevelOff").value === "1");
     document.getElementById("AlarmActivate_checkbox").checked = (document.getElementById("AlarmActivate").value === "1");
-    document.getElementById("AmpControlByRPM_checkbox").checked = (document.getElementById("AmpControlByRPM").value === "1");
     document.getElementById("InvertAltAmps_checkbox").checked = (document.getElementById("InvertAltAmps").value === "1");
     document.getElementById("InvertBattAmps_checkbox").checked = (document.getElementById("InvertBattAmps").value === "1");
     document.getElementById("IgnitionOverride_checkbox").checked = (document.getElementById("IgnitionOverride").value === "1");
     document.getElementById("TempSource_checkbox").checked = (document.getElementById("TempSource").value === "1");
     document.getElementById("admin_password").addEventListener("change", updatePasswordFields);
-    document.getElementById("InvertBatteryMonitorAmps_checkbox").checked = (document.getElementById("InvertBatteryMonitorAmps").value === "1");
+    document.getElementById("timeAxisModeChanging_checkbox").checked = (document.getElementById("timeAxisModeChanging").value === "1");
+    document.getElementById("weatherModeEnabled_checkbox").checked = (document.getElementById("weatherModeEnabled").value === "1");
+    document.getElementById("LearningMode_checkbox").checked = (document.getElementById("LearningMode").value === "1");
+    document.getElementById("LearningPaused_checkbox").checked = (document.getElementById("LearningPaused").value === "1");
+    document.getElementById("LearningDryRunMode_checkbox").checked = (document.getElementById("LearningDryRunMode").value === "1");
+    document.getElementById("LearningUpwardEnabled_checkbox").checked = (document.getElementById("LearningUpwardEnabled").value === "1");
+    document.getElementById("LearningDownwardEnabled_checkbox").checked = (document.getElementById("LearningDownwardEnabled").value === "1");
+    document.getElementById("EnableNeighborLearning_checkbox").checked = (document.getElementById("EnableNeighborLearning").value === "1");
+    document.getElementById("AutoSaveLearningTable_checkbox").checked = (document.getElementById("AutoSaveLearningTable").value === "1");
+    document.getElementById("ShowLearningDebugMessages_checkbox").checked = (document.getElementById("ShowLearningDebugMessages").value === "1");
+    document.getElementById("EXTRA_checkbox").checked = (document.getElementById("EXTRA").value === "1");
+    document.getElementById("AutoAltCurrentZero_checkbox").checked = (document.getElementById("AutoAltCurrentZero").value === "1");
+    document.getElementById("IgnoreLearningDuringPenalty_checkbox").checked = (document.getElementById("IgnoreLearningDuringPenalty").value === "1");
 
     setupInputValidation(); // Client side input validation of settings
 
+    // Start frame time monitoring
+    if (ENABLE_DETAILED_PROFILING) {
+        startFrameTimeMonitoring();
+        // Log performance summary every 10 seconds during development
+        setInterval(() => {
+            const avgFrameTime = frameTimeTracker.frameTimes.reduce((a, b) => a + b, 0) / frameTimeTracker.frameTimes.length;
+            //   console.log(`[PERF SUMMARY] Avg frame: ${avgFrameTime.toFixed(2)}ms, Worst: ${frameTimeTracker.worstFrame.toFixed(2)}ms, FPS: ${(1000 / avgFrameTime).toFixed(1)}`);
+            frameTimeTracker.worstFrame = 0; // Reset worst frame counter
+        }, 10000);
+    }
+
+    setInterval(reportPlotRenderingStats, plotRenderTracker.interval);
 
 
-}); // ← ADD THIS LINE
+});// <-- This is the end of the window load event listener
+
+
+// Function to handle Reset Learning Table button with confirmation
+function handleResetLearningTable() {
+    const confirmation = confirm(
+        "⚠️ RESET LEARNING TABLE ⚠️\n\n" +
+        "This will reset all learned current limits and speed ranges to default values.\n" +
+        "All learning progress will be lost.\n\n" +
+        "Are you sure you want to continue?"
+    );
+
+    if (!confirmation) {
+        return false;
+    }
+
+    // CRITICAL: Force re-initialization on next CSVData3
+    window.learningTableInitialized = false;
+    console.log('Learning table reset requested - will reinitialize from ESP32 defaults');
+
+    return true; // Allow form submission to ESP32
+}
+
+// Function to update learning status indicator
+function updateLearningStatus(data) {
+    const indicator = document.getElementById('learning-status-indicator');
+    if (!indicator) return;
+
+    const isLearningActive = data.LearningMode === 1 && data.LearningPaused !== 1;
+    const isDryRun = data.LearningDryRunMode === 1;
+
+    if (isLearningActive && isDryRun) {
+        indicator.textContent = '🔶 Dry Run';
+        indicator.className = 'learning-status learning-status-dryrun';
+    } else if (isLearningActive) {
+        indicator.textContent = '🟢 Learning';
+        indicator.className = 'learning-status learning-status-active';
+    } else if (data.LearningPaused === 1) {
+        indicator.textContent = '🟡 Paused';
+        indicator.className = 'learning-status learning-status-paused';
+    } else {
+        indicator.textContent = '⚪ Inactive';
+        indicator.className = 'learning-status learning-status-inactive';
+    }
+}
+
+// Function to update learning table highlighting
+function updateLearningTableHighlight(data) {
+    // Remove all active row classes
+    document.querySelectorAll('.learning-table-row-active').forEach(row => {
+        row.className = 'learning-table-row';
+    });
+
+    // Highlight current RPM index row if valid
+    if (data.currentRPMTableIndex >= 0 && data.currentRPMTableIndex <= 9) {
+        const rows = document.querySelectorAll('#learning-table-body tr');
+        if (rows[data.currentRPMTableIndex]) {
+            rows[data.currentRPMTableIndex].className = 'learning-table-row-active';
+        }
+    }
+}
+
+// Function to update PID initialized display
+function updatePidInitializedDisplay(data) {
+    const element = document.getElementById('pidInitialized_display');
+    if (element && data.pidInitialized !== undefined) {
+        element.textContent = data.pidInitialized === 1 ? 'Yes' : 'No';
+        element.style.color = data.pidInitialized === 1 ? 'var(--accent)' : '#999';
+    }
+}
+
+
+
 
 // graying of obsolete data debug
 function debugSensorAges() {
-    console.log('Current sensor ages:', window.sensorAges);
+    //  console.log('Current sensor ages:', window.sensorAges);
     if (!window.sensorAges) {
         console.error('sensorAges is undefined!');
     }
@@ -2197,64 +3559,14 @@ function enterOfflineMode() {
         cornerStatus.textContent = 'OFFLINE MODE';
         cornerStatus.style.backgroundColor = '#ff6600';
     }
-    console.log('Entered offline mode - all readings marked as stale');
+    // console.log('Entered offline mode - all readings marked as stale');
 }
-function validateRPMOrder() {
-    // Find the specific form containing RPM inputs
-    const rpmForm = document.querySelector('form input[name="RPM1"]')?.closest('form');
-    if (!rpmForm) {
-        console.warn('RPM form not found');
-        return;
-    }
 
-    const saveButton = rpmForm.querySelector('input[type="submit"]');
-    let valid = true;
-    let errorMessage = '';
-
-    // Clear previous error styles
-    for (let i = 1; i <= 7; i++) {
-        const input = document.getElementById(`RPM${i}_input`);
-        if (input) {
-            input.classList.remove('input-error');
-            input.title = ''; // Clear tooltip
-        }
-    }
-
-    // Check each pair for ascending order
-    for (let i = 2; i <= 7; i++) {
-        const prevInput = document.getElementById(`RPM${i - 1}_input`);
-        const currInput = document.getElementById(`RPM${i}_input`);
-
-        if (!prevInput || !currInput) continue;
-
-        const prev = prevInput.valueAsNumber;
-        const curr = currInput.valueAsNumber;
-
-        // Only validate if both values are entered and valid
-        if (!isNaN(prev) && !isNaN(curr) && prev > 0 && curr > 0) {
-            if (curr <= prev) {
-                currInput.classList.add('input-error');
-                currInput.title = `RPM${i} must be greater than RPM${i - 1} (${prev})`;
-                prevInput.classList.add('input-error');
-                prevInput.title = `RPM${i - 1} must be less than RPM${i} (${curr})`;
-                valid = false;
-                errorMessage = 'RPM values must be in ascending order';
-            }
-        }
-    }
-
-    if (saveButton) {
-        saveButton.disabled = !valid;
-        saveButton.title = valid ? '' : errorMessage;
-    }
-
-    return valid;
-}
 
 function validateSettings() {
     const validations = [
         {
-            inputs: ['TargetFloatVoltage', 'FullChargeVoltage'],
+            inputs: ['FloatVoltage', 'BulkVoltage'],
             check: (float, bulk) => !isNaN(float) && !isNaN(bulk) && float >= bulk,
             error: 'Float voltage must be less than bulk voltage'
         },
@@ -2321,7 +3633,7 @@ function validateSettings() {
 //  validation called in the window load event, for client side checking of input values
 function setupInputValidation() {
     // Settings validation
-    const settingsInputs = ["TargetFloatVoltage", "FullChargeVoltage", "TargetAmpL", "TargetAmps", "MinDuty", "MaxDuty"];
+    const settingsInputs = ["FloatVoltage", "BulkVoltage", "TargetAmpL", "TargetAmps", "MinDuty", "MaxDuty"];
 
     settingsInputs.forEach(name => {
         const input = document.querySelector(`input[name="${name}"]`);
@@ -2333,19 +3645,10 @@ function setupInputValidation() {
         }
     });
 
-    // RPM validation
-    for (let i = 1; i <= 7; i++) {
-        const rpmInput = document.getElementById(`RPM${i}_input`);
-        if (rpmInput) {
-            rpmInput.addEventListener('input', validateRPMOrder);
-            rpmInput.addEventListener('blur', validateRPMOrder);
-        }
-    }
 
     // Run initial validation
     setTimeout(() => {
         validateSettings();
-        validateRPMOrder();
     }, 100); // Small delay to ensure all data is loaded
 }
 //Dynamic adjustment factors
@@ -2362,7 +3665,7 @@ function resetDynamicShuntGain() {
 
     fetch("/get?" + new URLSearchParams(formData).toString())
         .then(() => {
-            console.log("SOC gain factor reset requested");
+            //   console.log("SOC gain factor reset requested");
         })
         .catch(err => console.error("Reset failed:", err));
 }
@@ -2380,10 +3683,42 @@ function resetDynamicAltZero() {
 
     fetch("/get?" + new URLSearchParams(formData).toString())
         .then(() => {
-            console.log("Alternator zero offset reset requested");
+            //  console.log("Alternator zero offset reset requested");
         })
         .catch(err => console.error("Reset failed:", err));
 }
+
+
+function updateLearningTableEditability(learningModeEnabled) {
+    const rpmInputs = document.querySelectorAll('[id^="rpmTableRPMPoints"][id$="_input"]');
+    const ampInputs = document.querySelectorAll('[id^="rpmCurrentTable"][id$="_input"]');
+    const submitButtons = document.querySelectorAll('.learning-table-edit-form input[type="submit"]');
+
+    const isEditable = !learningModeEnabled; // Editable when learning is OFF
+
+    // Enable/disable RPM inputs
+    rpmInputs.forEach(input => {
+        input.disabled = !isEditable;
+        input.style.opacity = isEditable ? '1' : '0.5';
+        input.style.cursor = isEditable ? 'text' : 'not-allowed';
+    });
+
+    // Enable/disable current limit inputs
+    ampInputs.forEach(input => {
+        input.disabled = !isEditable;
+        input.style.opacity = isEditable ? '1' : '0.5';
+        input.style.cursor = isEditable ? 'text' : 'not-allowed';
+    });
+
+    // Enable/disable submit buttons
+    submitButtons.forEach(button => {
+        button.disabled = !isEditable;
+        button.style.opacity = isEditable ? '1' : '0.5';
+        button.title = isEditable ? '' : 'Disable Learning Mode to edit table manually';
+    });
+}
+
+
 
 function updateLifeIndicators(data) {
     const indicatorColors = ['#00a19a', '#ff9800', '#f44336']; // Green, Yellow, Red
@@ -2416,5 +3751,4 @@ function updateLifeIndicators(data) {
         element.textContent = colorNames[colorIndex];
     });
 }
-
-
+/* XREG_END */
