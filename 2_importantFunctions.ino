@@ -1149,8 +1149,7 @@ void setupServer() {
       ResetAlarmLatch = 1;  // Set the flag - don't save to file as it's momentary
       queueConsoleMessage("ALARM LATCH: Reset requested from web interface NO FUNCTION!");
       inputMessage = "1";  // Return confirmation
-    }
-    else if (request->hasParam("bulkCompleteTime")) {
+    } else if (request->hasParam("bulkCompleteTime")) {
       foundParameter = true;
       inputMessage = request->getParam("bulkCompleteTime")->value();
       writeFile(LittleFS, "/bulkCompleteTime.txt", inputMessage.c_str());
@@ -1372,8 +1371,7 @@ void setupServer() {
       writeFile(LittleFS, "/weatherModeEnabled.txt", inputMessage.c_str());
       weatherModeEnabled = inputMessage.toInt();
       queueConsoleMessage("Weather Mode " + String(weatherModeEnabled ? "enabled" : "disabled"));
-    }
-    else if (request->hasParam("UVThresholdHigh")) {
+    } else if (request->hasParam("UVThresholdHigh")) {
       foundParameter = true;
       inputMessage = request->getParam("UVThresholdHigh")->value();
       writeFile(LittleFS, "/UVThresholdHigh.txt", inputMessage.c_str());
@@ -3579,64 +3577,86 @@ cleanup:
   }
 }
 
-void performOTAUpdate(const UpdateInfo &updateInfo) {
-  //Purpose: Handles the partition switching and signature download
+void performOTAUpdateToVersion(const char *targetVersion) {
+  //This performs an OTA update to specific version
+  // Called by: The /get handler when UpdateToVersion parameter is received
+  //Purpose: Initiates a targeted version update
   //Action:
-  //1) Downloads signature from server
-  //2) Checks if running on ota_0 or factory partition
-  //3) If on ota_0: switches to factory and reboots
-  //4) If on factory: calls performStreamingOTAUpdate()
-  Serial.println("🔒 === STARTING SECURE PACKAGE UPDATE ===");
-  prepareForOTA();
-  // Download signature first
+  //1) Makes HTTP request to check.php
+  //2) Sends Target-Version as a URL parameter
+  //3) Calls performOTAUpdate() if version matches
+  Serial.println();
+  Serial.println();
+  Serial.printf("🎯 === PERFORMING TARGETED OTA UPDATE TO %s ===\n", targetVersion);
+  Serial.println("OTA: Starting targeted update to version " + String(targetVersion));
+  events.send("OTA: Starting update to version " + String(targetVersion), "console", millis());
+  if (currentMode != MODE_CLIENT) {
+    Serial.println("OTA: Cannot update - not in client mode");
+    events.send("OTA: Cannot update - must be in client mode", "console", millis());
+    return;
+  }
+  // Skip if not connected to internet
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("OTA: Cannot update - WiFi not connected");
+    events.send("OTA: Cannot update - WiFi not connected", "console", millis());
+    return;
+  }
+  if (!testInternetSpeed()) {
+    Serial.println("OTA: Cannot update - internet too slow or unavailable");
+    events.send("OTA: Cannot update - internet connection insufficient", "console", millis());
+    return;
+  }
+  esp_task_wdt_reset();
   HTTPClient http;
   WiFiClientSecure client;
   client.setCACert(server_root_ca);
-
-  Serial.printf("📥 Downloading signature from: %s\n", updateInfo.signatureUrl.c_str());
-  http.begin(client, updateInfo.signatureUrl);
+  // Request specific version using Target-Version header (per your documentation)
+  //String url = String(OTA_SERVER_URL) + "/api/firmware/check.php"; // OLD WRONG REMOVE LATER
+  String url = String(OTA_SERVER_URL) + "/api/firmware/check.php?requestedVersion=" + String(targetVersion);
+  Serial.println("🌐 Requesting specific version from: " + url);
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("User-Agent", "XRegulator/2.0");
   http.addHeader("Device-ID", getDeviceId());
+  http.addHeader("Current-Version", FIRMWARE_VERSION);
+  //http.addHeader("Target-Version", targetVersion);  // This triggers server's targeted response DELETE LATER
+  http.addHeader("Hardware-Version", "ESP32-WROOM-32");
+  http.setTimeout(30000);
   int httpCode = http.GET();
-
-  if (httpCode != 200) {
-    Serial.printf("❌ Signature download failed: %d\n", httpCode);
-    http.end();
-    return;
+  Serial.printf("📡 HTTP Response Code: %d\n", httpCode);
+  if (httpCode == 200) {
+    String response = http.getString();
+    Serial.println("📨 Server response: " + response);
+    UpdateInfo updateInfo = parseUpdateResponse(response);
+    if (updateInfo.hasUpdate && updateInfo.version == String(targetVersion)) {
+      Serial.printf("=== STARTING TARGETED UPDATE TO %s ===\n", targetVersion);
+      events.send("OTA: Beginning download of version " + String(targetVersion), "console", millis());
+      performOTAUpdate(updateInfo);  // Use your existing OTA logic
+    } else if (!updateInfo.hasUpdate) {
+      Serial.println("OTA: Server says no update available for version " + String(targetVersion));
+      events.send("OTA: Server says no update available for version " + String(targetVersion), "console", millis());
+    } else {
+      Serial.println("OTA: Version mismatch - requested " + String(targetVersion) + ", got " + updateInfo.version);
+      events.send("OTA: Version mismatch - requested " + String(targetVersion) + ", got " + updateInfo.version, "console", millis());
+    }
+  } else if (httpCode == 404) {
+    Serial.println("OTA: Version " + String(targetVersion) + " not found on server");
+    events.send("OTA: Version " + String(targetVersion) + " not found on server", "console", millis());
+  } else if (httpCode == 429) {
+    Serial.println("OTA: Rate limited - try again later");
+    events.send("OTA: Rate limited - try again later", "console", millis());
+  } else if (httpCode < 0) {
+    Serial.println("OTA: Connection failed - " + http.errorToString(httpCode));
+    // NEW: Better error message
+    events.send("OTA: Connection failed - check internet connection", "console", millis());
+  } else {
+    Serial.println("OTA: Update request failed with HTTP code: " + String(httpCode));
+    // NEW: Better error message
+    events.send("OTA: Update request failed - HTTP error " + String(httpCode), "console", millis());
   }
 
-  String signatureBase64 = http.getString();
   http.end();
-  signatureBase64.trim();
-  Serial.printf("✅ Signature downloaded (%d chars)\n", signatureBase64.length());
-  // Warn user before blocking operation
-  Serial.println("UPDATE: Starting firmware download, web interface will be unresponsive");
-  events.send("UPDATE: Downloading firmware - interface will freeze 60-90 sec", "console", millis());
-  delay(3000);
-  // Perform streaming update
-  // Check if we need to restart to factory first
-  const esp_partition_t *ota0_partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-  const esp_partition_t *factory_partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
-  const esp_partition_t *running_partition = esp_ota_get_running_partition();
-
-  if (running_partition == ota0_partition) {
-    Serial.println("OTA: Currently on ota_0, switching to factory for update...");
-    events.send("OTA: Switching to factory partition for update", "console", millis());
-
-    // Switch to factory partition and web files
-    esp_ota_set_boot_partition(factory_partition);
-    switchToFactoryWebFiles();
-
-    Serial.println("OTA: Restarting to factory, then will download update to ota_0");
-    events.send("OTA: Restarting to factory - device will reboot now", "console", millis());
-    delay(3000);
-    ESP.restart();
-    // Execution stops here
-  }
-
-  // If we reach here, we're running from factory - proceed with update
-  performStreamingOTAUpdate(updateInfo, signatureBase64);
 }
-
 
 void performOTAUpdateToVersion(const char *targetVersion) {
   //This performs an OTA update to specific version

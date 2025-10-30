@@ -321,8 +321,29 @@ function queuePlotUpdate(plotName) {
 // Software Update functionality
 let availableVersions = {};
 
+// Quick internet connectivity test (runs in browser)
+// Uses same endpoint as ESP32 testInternetSpeed() for consistency
+async function testInternetConnectivity() {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+        // Same endpoint ESP32 uses: Cloudflare's trace
+        const response = await fetch('http://cloudflare.com/cdn-cgi/trace', {
+            method: 'GET',
+            signal: controller.signal,
+            cache: 'no-store'
+        });
+
+        clearTimeout(timeoutId);
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
 // Load available versions from server
-function loadAvailableVersions() {
+async function loadAvailableVersions() {
     // Require unlock first
     if (!currentAdminPassword) {
         alert('Please unlock settings first (enter admin password)');
@@ -346,17 +367,62 @@ function loadAvailableVersions() {
     document.getElementById('version-loading').style.display = 'block';
     document.getElementById('version-list').style.display = 'none';
 
-    fetch('https://ota.xengineering.net/api/firmware/versions.php')
-        .then(response => response.json())
-        .then(data => {
-            availableVersions = data.versions || {};
-            displayAvailableVersions();
-        })
-        .catch(error => {
-            console.error('Error loading versions:', error);
-            document.getElementById('version-loading').innerHTML =
-                '<div style="color: red;">Error loading versions. Check internet connection.</div>';
+    // Show checking message
+    versionLoading.innerHTML = '<div style="text-align: center; padding: 20px;">Testing internet connection...</div>';
+
+    // Quick connectivity test
+    const hasInternet = await testInternetConnectivity();
+
+    if (!hasInternet) {
+        versionLoading.innerHTML =
+            '<div style="color: #ff6b6b; padding: 20px; text-align: center; background: #fff3f3; border-radius: 5px;">' +
+            '<strong>⚠️ No Internet Access</strong><br><br>' +
+            'WiFi is connected but cannot reach internet.<br>' +
+            '<small>Check if ship\'s network has WAN connection.</small>' +
+            '</div>';
+        return;
+    }
+
+    // Internet check passed, now fetch versions
+    versionLoading.innerHTML = '<div style="text-align: center; padding: 20px;">Loading available versions...</div>';
+
+    try {
+        // Fetch with reasonable timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+        const response = await fetch('https://ota.xengineering.net/api/firmware/versions.php', {
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error('Server returned ' + response.status);
+        }
+
+        const data = await response.json();
+        availableVersions = data.versions || {};
+        displayAvailableVersions();
+
+    } catch (error) {
+        console.error('Error loading versions:', error);
+        let errorMsg = 'Cannot load available versions.';
+
+        if (error.name === 'AbortError') {
+            errorMsg = 'Connection timeout (15s) - slow or unstable connection';
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            errorMsg = 'Network error - connection lost during fetch';
+        } else {
+            errorMsg = 'Error: ' + error.message;
+        }
+
+        versionLoading.innerHTML =
+            '<div style="color: #ff6b6b; padding: 20px; text-align: center; background: #fff3f3; border-radius: 5px;">' +
+            '<strong>⚠️ ' + errorMsg + '</strong><br><br>' +
+            '<small>Try again or check network connection</small>' +
+            '</div>';
+    }
 }
 
 function getStoredPassword() {
@@ -364,6 +430,7 @@ function getStoredPassword() {
     const existingPasswordField = document.querySelector('.password_field');
     return existingPasswordField ? existingPasswordField.value : '';
 }
+
 // Display available versions
 function displayAvailableVersions() {
     const versionList = document.getElementById('version-list');

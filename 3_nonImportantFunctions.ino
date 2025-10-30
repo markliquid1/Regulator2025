@@ -1446,42 +1446,50 @@ bool fetchWeatherData() {
     queueConsoleMessage("GPS: No GPS coordinates available for weather");
     return false;
   }
-
+  if (currentMode != MODE_CLIENT) {
+    weatherLastError = "Not in client mode";
+    weatherDataValid = 0;
+    queueConsoleMessage("Weather: Must be in client mode");
+    return false;
+  }
   // Check WiFi connection
-  if (currentMode == MODE_CLIENT && WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED) {
     weatherLastError = "WiFi not connected";
     weatherDataValid = 0;
     queueConsoleMessage("Weather: WiFi not connected");
     return false;
   }
+  // Test internet speed before attempting download
+  if (!testInternetSpeed()) {
+    weatherLastError = "Internet connection too slow or unavailable";
+    weatherDataValid = 0;
+    nextWeatherUpdate = millis() + 3600000;  // Retry in 1 hour
+    return false;
+  }
   HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
-
   String url = "https://api.open-meteo.com/v1/forecast?";
   url += "latitude=" + String(LatitudeNMEA, 6);
   url += "&longitude=" + String(LongitudeNMEA, 6);
   url += "&daily=shortwave_radiation_sum";
   url += "&timezone=auto";
-
   Serial.println("Open-Meteo Forecast URL: " + url);
-
   http.begin(client, url);
   http.setTimeout(WeatherTimeoutMs);
-
+  esp_task_wdt_reset();
   int httpResponseCode = http.GET();
   weatherHttpResponseCode = httpResponseCode;
-
+  esp_task_wdt_reset();
   if (httpResponseCode > 0) {
     String payload = http.getString();
+    esp_task_wdt_reset();
     queueConsoleMessage("GPS: " + String(LatitudeNMEA, 6) + "," + String(LongitudeNMEA, 6));
     queueConsoleMessage("RAW RESPONSE: " + payload);
     Serial.println("Open-Meteo Response Code: " + String(httpResponseCode));
-
     // Parse JSON response
     DynamicJsonDocument doc(4096);
     DeserializationError error = deserializeJson(doc, payload);
-
     if (error) {
       weatherLastError = "JSON parse error: " + String(error.c_str());
       weatherDataValid = 0;
@@ -1489,7 +1497,6 @@ bool fetchWeatherData() {
       http.end();
       return false;
     }
-
     // Extract daily shortwave radiation data
     JsonArray radiation = doc["daily"]["shortwave_radiation_sum"];
     if (radiation.size() < 3) {
@@ -1498,28 +1505,22 @@ bool fetchWeatherData() {
       http.end();
       return false;
     }
-
     // Get daily solar irradiance in MJ/m²/day
     float mjToday = radiation[0];
     float mjTomorrow = radiation[1];
     float mjDay2 = radiation[2];
-
     // Convert MJ/m²/day to kWh using corrected solar panel math
     // Formula: kWh = (MJ/m²/day × 0.278 MJ→kWh) ÷ 1000 × PanelWatts × PerformanceRatio
-
     pKwHrToday = (mjToday * MJ_TO_KWH_CONVERSION / STC_IRRADIANCE) * SolarWatts * performanceRatio;
     pKwHrTomorrow = (mjTomorrow * MJ_TO_KWH_CONVERSION / STC_IRRADIANCE) * SolarWatts * performanceRatio;
     pKwHr2days = (mjDay2 * MJ_TO_KWH_CONVERSION / STC_IRRADIANCE) * SolarWatts * performanceRatio;
-
     // Store solar irradiance in UV variables for compatibility (convert MJ to Wh/m²)
     UVToday = mjToday * 278.0f;  // MJ/m²/day to Wh/m²/day
     UVTomorrow = mjTomorrow * 278.0f;
     UVDay2 = mjDay2 * 278.0f;
-
     weatherLastUpdate = millis();
     weatherDataValid = 1;
     weatherLastError = "Success";
-
     // Save solar data to LittleFS
     writeFile(LittleFS, "/UVToday.txt", String(UVToday, 1).c_str());
     writeFile(LittleFS, "/UVTomorrow.txt", String(UVTomorrow, 1).c_str());
@@ -1528,13 +1529,11 @@ bool fetchWeatherData() {
     writeFile(LittleFS, "/pKwHrTomorrow.txt", String(pKwHrTomorrow, 2).c_str());
     writeFile(LittleFS, "/pKwHr2days.txt", String(pKwHr2days, 2).c_str());
     writeFile(LittleFS, "/weatherDataValid.txt", "1");
-
     String logMsg = "Solar forecast - Today: " + String(UVToday, 0) + "Wh/m² (" + String(pKwHrToday, 2) + "kWh), Tomorrow: " + String(UVTomorrow, 0) + "Wh/m² (" + String(pKwHrTomorrow, 2) + "kWh), Day 2: " + String(UVDay2, 0) + "Wh/m² (" + String(pKwHr2days, 2) + "kWh)";
     Serial.println(logMsg);
     queueConsoleMessage(logMsg);
     http.end();
     return true;
-
   }
 
   else {
@@ -1542,25 +1541,27 @@ bool fetchWeatherData() {
     weatherDataValid = 0;
     writeFile(LittleFS, "/weatherDataValid.txt", "0");
     Serial.println("Open-Meteo HTTP error: " + String(httpResponseCode));
-
     // Provide specific error messages
     if (httpResponseCode == 429) {
       weatherLastError = "API rate limit exceeded (429)";
       queueConsoleMessage("Open-Meteo: Rate limit exceeded - try again later");
     } else if (httpResponseCode == -1) {
-      weatherLastError = "Connection timeout";
-      queueConsoleMessage("Open-Meteo: Connection timeout - check internet connection");
+      weatherLastError = "Connection timeout or failed";
+      queueConsoleMessage("Open-Meteo: Connection timeout - check internet");
+    } else {
+      // NEW: Better error message for other HTTP errors
+      queueConsoleMessage("Open-Meteo: HTTP error " + String(httpResponseCode));
     }
-
     http.end();
     return false;
   }
 }
-//Analyze weather data and decide alternator mode
-// If weather mode is disabled or the weather data is invalid, it sets the mode to normal (0) and exits.
-// Otherwise, it checks the UV index for today, tomorrow, and the next day.
-//If 2 or more days have a UV index above the configured threshold, it sets the mode to high UV mode (1), which disables the alternator.
+
 void analyzeWeatherMode() {
+  //Analyze weather data and decide alternator mode
+  // If weather mode is disabled or the weather data is invalid, it sets the mode to normal (0) and exits.
+  // Otherwise, it checks the UV index for today, tomorrow, and the next day.
+  //If 2 or more days have a UV index above the configured threshold, it sets the mode to high UV mode (1), which disables the alternator.
   if (!weatherDataValid || !weatherModeEnabled) {  // if weather mode is not enabled, or weather data is invalid
     currentWeatherMode = 0;
     return;
@@ -3070,9 +3071,9 @@ void AdjustFieldLearnMode() {
   static unsigned long lastPidUpdate = 0;
   unsigned long currentMillis = millis();
   bool pidUpdateDue = (currentMillis - lastPidUpdate >= PidSampleTime);
-  
+
   // === INITIALIZATION AND SETUP ===
-  
+
   // Clear overheat history if requested
   if (ClearOverheatHistory == 1) {
     clearOverheatHistoryAction();
@@ -3100,17 +3101,17 @@ void AdjustFieldLearnMode() {
   }
 
   // === BASIC ENABLE/DISABLE LOGIC ===
-  
+
   chargingEnabled = (Ignition == 1 && OnOff == 1);
 
   // === SAFETY CHECKS - SENSOR HEALTH (run every loop for fast response) ===
-  
+
   // Check if temperature sensor is responding
   unsigned long tempAge = currentTime - dataTimestamps[IDX_ALTERNATOR_TEMP];
   bool tempDataVeryStale = (tempAge > 30000);  // 30 seconds timeout
   if (tempDataVeryStale) {
     static unsigned long lastTempStaleWarning = 0;
-    digitalWrite(21, HIGH);  // Sound alarm
+    digitalWrite(21, HIGH);                         // Sound alarm
     if (millis() - lastTempStaleWarning > 10000) {  // Throttle warnings to 10s intervals
       Serial.println("Onewire sensor stale, sensor dead or disconnected");
       queueConsoleMessage("OneWire sensor stale, sensor dead or disconnected");
@@ -3143,12 +3144,12 @@ void AdjustFieldLearnMode() {
   }
 
   // === PREPARATION ===
-  
+
   updateChargingStage();  // Update bulk/float charging stage
   float currentBatteryVoltage = getBatteryVoltage();
 
   // === EMERGENCY SHUTDOWNS (run every loop for immediate response) ===
-  
+
   // Emergency field collapse - voltage spike protection
   if (currentBatteryVoltage > (ChargingVoltageTarget + 0.2)) {
     digitalWrite(4, 0);  // Kill field immediately
@@ -3184,27 +3185,27 @@ void AdjustFieldLearnMode() {
   }
 
   // === BMS OVERRIDE LOGIC ===
-  
+
   // Allow external Battery Management System to disable charging
   if (bmsLogic == 1) {
     bmsSignalActive = !digitalRead(36);  // Inverted due to optocoupler
     if (bmsLogicLevelOff == 0) {
-      chargingEnabled = chargingEnabled && bmsSignalActive;   // BMS LOW = stop charging
+      chargingEnabled = chargingEnabled && bmsSignalActive;  // BMS LOW = stop charging
     } else {
       chargingEnabled = chargingEnabled && !bmsSignalActive;  // BMS HIGH = stop charging
     }
   }
 
   // === MAIN FIELD CONTROL ===
-  
+
   if (chargingEnabled) {
     digitalWrite(4, 1);  // Enable field MOSFET
 
     if (ManualFieldToggle == 0) {  // Automatic PID mode
-      
+
       // --- TARGET CALCULATION PIPELINE (only when PID update is due) ---
       if (pidUpdateDue) {
-        
+
         // Step 1: Get base target from learning table (RPM-dependent)
         getLearningTargetFromRPM();
         if (learningTargetFromRPM > 0) {
@@ -3264,20 +3265,20 @@ void AdjustFieldLearnMode() {
         }
 
         // --- PID CONTROL ---
-        
-        pidInput = targetCurrent;      // Current reading (process variable)
-        pidSetpoint = uTargetAmps;     // Desired target (setpoint)
+
+        pidInput = targetCurrent;   // Current reading (process variable)
+        pidSetpoint = uTargetAmps;  // Desired target (setpoint)
 
         bool pidComputed = currentPID.Compute();  // Calculate new duty cycle
-        dutyCycle = pidOutput;  // PID library updates pidOutput
+        dutyCycle = pidOutput;                    // PID library updates pidOutput
 
         // --- LEARNING LOGIC ---
-        
+
         // Only learn when PID computed, learning enabled, and not paused
         if (pidComputed && LearningMode == 1 && !LearningPaused) {
           processLearningLogic();
         }
-        
+
         lastPidUpdate = currentMillis;  // Mark timing for next cycle
       }
 
@@ -3296,7 +3297,7 @@ void AdjustFieldLearnMode() {
 
   // === SAFETY OVERRIDES (throttled to PID sample rate to avoid fighting PID) ===
   if (pidUpdateDue) {
-    
+
     // Temperature protection - aggressive reduction
     if (!IgnoreTemperature && TempToUse > TemperatureLimitF && dutyCycle > (MinDuty + 2 * dutyStep)) {
       dutyCycle -= 2 * dutyStep;
@@ -3306,7 +3307,7 @@ void AdjustFieldLearnMode() {
         lastTempProtectionWarning = millis();
       }
     }
-    
+
     // Voltage protection - most aggressive reduction
     if (currentBatteryVoltage > ChargingVoltageTarget && dutyCycle > (MinDuty + 3 * dutyStep)) {
       dutyCycle -= 3 * dutyStep;
@@ -3316,7 +3317,7 @@ void AdjustFieldLearnMode() {
         lastVoltageProtectionWarning = millis();
       }
     }
-    
+
     // Battery current protection
     if (Bcur > MaximumAllowedBatteryAmps && dutyCycle > (MinDuty + dutyStep)) {
       dutyCycle -= dutyStep;
@@ -3331,14 +3332,14 @@ void AdjustFieldLearnMode() {
   Serial.println("Final dutyCycle after safety checks but before constrains: " + String(dutyCycle) + "%");
 
   // === FINAL OUTPUT ===
-  
+
   // Enforce hard limits
   dutyCycle = constrain(dutyCycle, MinDuty, MaxDuty);
 
   // Apply duty cycle to PWM hardware (only when changed or on PID update)
   // NOTE: This still runs every loop, but could be optimized to only call when dutyCycle changes.  Probably not worth the complexity right now.
   setDutyPercent((int)dutyCycle);
-  
+
   // Calculate field voltage and current for monitoring
   vvout = dutyCycle / 100 * currentBatteryVoltage;
   iiout = vvout / FieldResistance;
@@ -3349,9 +3350,7 @@ void AdjustFieldLearnMode() {
   MARK_FRESH(IDX_FIELD_AMPS);
 
   // Update field status indicator for display
-  fieldActiveStatus = (chargingEnabled && 
-                       (fieldCollapseTime == 0 || (millis() - fieldCollapseTime) >= FIELD_COLLAPSE_DELAY) && 
-                       (dutyCycle > 0)) ? 1 : 0;
+  fieldActiveStatus = (chargingEnabled && (fieldCollapseTime == 0 || (millis() - fieldCollapseTime) >= FIELD_COLLAPSE_DELAY) && (dutyCycle > 0)) ? 1 : 0;
 }
 
 void getLearningTargetFromRPM() {
@@ -3615,6 +3614,89 @@ void clearOverheatHistoryAction() {
     saveLearningTableToNVS();
   }
   queueConsoleMessage("Overheat History: All history cleared");
+}
+
+
+bool testInternetSpeed() {
+  // Internet speed test - checks if connection is fast enough for operations
+  // Returns true if speed >= 5 Kbps, false otherwise
+  // Feeds watchdog during test to prevent timeout
+
+  // First check if WiFi is even connected
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Speed test failed: WiFi not connected");
+    queueConsoleMessage("Internet check failed: WiFi not connected");
+    return false;
+  }
+
+  Serial.println("Testing internet speed...");
+  esp_task_wdt_reset();  // Feed watchdog before test
+
+  WiFiClient client;
+
+  // Test 1: Can we connect at all? (3 second timeout)
+  unsigned long connectStart = millis();
+  if (!client.connect("1.1.1.1", 80, 3000)) {
+    Serial.println("Speed test failed: Cannot reach internet");
+    queueConsoleMessage("Internet check failed: No internet access on WiFi network");
+    esp_task_wdt_reset();
+    return false;
+  }
+  unsigned long connectTime = millis() - connectStart;
+  client.stop();
+
+  esp_task_wdt_reset();  // Feed watchdog after connectivity test
+
+  // Test 2: Download small file and measure speed
+  HTTPClient http;
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();  // Don't validate cert for speed test
+
+  // Use a reliable small file (Cloudflare's trace - about 200-300 bytes)
+  String testUrl = "http://cloudflare.com/cdn-cgi/trace";
+
+  http.begin(secureClient, testUrl);
+  http.setTimeout(5000);  // 5 second timeout for speed test
+
+  unsigned long downloadStart = millis();
+  int httpCode = http.GET();
+
+  esp_task_wdt_reset();  // Feed watchdog after GET request
+
+  if (httpCode != 200) {
+    http.end();
+    Serial.printf("Speed test failed: HTTP error %d\n", httpCode);
+    queueConsoleMessage("Internet check failed: Connection error (HTTP " + String(httpCode) + ")");
+    return false;
+  }
+
+  String payload = http.getString();
+  unsigned long downloadTime = millis() - downloadStart;
+  int bytesReceived = payload.length();
+
+  http.end();
+  esp_task_wdt_reset();  // Feed watchdog after completing test
+
+  // Calculate speed in bytes per second
+  float bytesPerSecond = 0;
+  if (downloadTime > 0) {
+    bytesPerSecond = (bytesReceived * 1000.0) / downloadTime;  // bytes/sec
+  }
+
+  float kbps = (bytesPerSecond * 8.0) / 1000.0;  // Convert to kilobits per second
+
+  Serial.printf("Speed test result: %.2f Kbps (%d bytes in %lu ms)\n", kbps, bytesReceived, downloadTime);
+
+  // Require minimum 5 Kbps
+  if (kbps < 5.0) {
+    Serial.printf("Speed test failed: Connection too slow (%.2f Kbps < 5 Kbps minimum)\n", kbps);
+    queueConsoleMessage("Internet too slow: " + String(kbps, 1) + " Kbps (need 5+ Kbps)");
+    return false;
+  }
+
+  Serial.printf("Speed test passed: %.2f Kbps\n", kbps);
+  queueConsoleMessage("Internet speed OK: " + String(kbps, 1) + " Kbps");
+  return true;
 }
 
 void StuffToDoAtSomePoint() {
